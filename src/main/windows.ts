@@ -12,6 +12,7 @@ export class WindowManager {
   quitting = false;
   private tray: Tray | null = null;
   private bounds: Record<string, Electron.Rectangle> = {};
+  private compact = new Map<string, Electron.Rectangle>();
   private boundsFile: string;
   private removed = new Set<number>();
   private loaded = new Set<number>();
@@ -71,12 +72,12 @@ export class WindowManager {
   async prepareQuit() {
     return (await Promise.all([...this.notes.values()].map(window => this.guard(window)))).every(Boolean);
   }
-  private clamp(value?: Electron.Rectangle): Electron.Rectangle {
+  private clamp(value?: Electron.Rectangle, minimumHeight = 220): Electron.Rectangle {
     const candidate = value && [value.x, value.y, value.width, value.height].every(Number.isFinite)
       ? value : { x: screen.getPrimaryDisplay().workArea.x + 70, y: screen.getPrimaryDisplay().workArea.y + 70, width: 340, height: 380 };
     const area = screen.getDisplayMatching(candidate).workArea;
     const width = Math.min(Math.max(260, candidate.width), area.width);
-    const height = Math.min(Math.max(220, candidate.height), area.height);
+    const height = Math.min(Math.max(minimumHeight, candidate.height), area.height);
     return { width, height, x: Math.max(area.x, Math.min(candidate.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(candidate.y, area.y + area.height - height)) };
   }
   private make(noteId?: string) {
@@ -105,11 +106,17 @@ export class WindowManager {
     if (noteId) {
       const save = () => {
         if (window.isDestroyed()) return;
-        this.bounds[noteId] = window.getBounds();
+        const actual = window.getBounds(), expanded = this.compact.get(noteId);
+        this.bounds[noteId] = expanded ? { ...expanded, x: actual.x, y: actual.y } : actual;
+        if (expanded) this.compact.set(noteId, this.bounds[noteId]);
         try { atomicWrite(this.boundsFile, JSON.stringify(this.bounds)); }
         catch (error) { console.error('无法保存便笺位置', error); }
       };
+      let pendingSave: ReturnType<typeof setTimeout> | undefined;
+      const scheduleSave = () => { clearTimeout(pendingSave); pendingSave = setTimeout(save, 120); };
+      window.on('move', scheduleSave); window.on('resize', scheduleSave);
       window.on('moved', save); window.on('resized', save);
+      window.on('closed', () => clearTimeout(pendingSave));
       window.on('close', event => {
         save();
         if (!this.quitting && !this.removed.has(window.id)) {
@@ -122,7 +129,7 @@ export class WindowManager {
           }).finally(() => this.closing.delete(window.id));
         }
       });
-      window.on('closed', () => { this.notes.delete(noteId); this.removed.delete(window.id); });
+      window.on('closed', () => { this.notes.delete(noteId); this.compact.delete(noteId); this.removed.delete(window.id); });
     }
     return window;
   }
@@ -145,7 +152,29 @@ export class WindowManager {
     if (typeof enabled !== 'boolean') throw new Error('置顶设置必须为开或关。');
     window.setAlwaysOnTop(enabled);
   }
-  private reposition() { for (const window of this.notes.values()) window.setBounds(this.clamp(window.getBounds())); }
+  setNoteExpanded(id: string, expanded: boolean) {
+    const window = this.notes.get(id);
+    if (!window || window.isDestroyed()) throw new Error('该便笺窗口未打开。');
+    if (typeof expanded !== 'boolean') throw new Error('展开设置必须为开或关。');
+    const saved = this.compact.get(id);
+    if (!expanded && !saved) {
+      const bounds = window.getBounds();
+      this.compact.set(id, bounds);
+      window.setMinimumSize(260, 120);
+      window.setBounds(this.clamp({ ...bounds, height: 120 }, 120));
+      window.setResizable(false);
+    } else if (expanded && saved) {
+      // Keep the compact card's current location, but restore its full editor size.
+      const location = window.getBounds();
+      this.compact.delete(id);
+      window.setResizable(true);
+      window.setMinimumSize(260, 220);
+      window.setBounds(this.clamp({ ...saved, x: location.x, y: location.y }));
+    }
+  }
+  private reposition() {
+    for (const [id, window] of this.notes) window.setBounds(this.clamp(window.getBounds(), this.compact.has(id) ? 120 : 220));
+  }
   createTray() {
     if (process.env.PINBOARD_TEST_MODE === '1') return;
     const pixels = Buffer.alloc(16 * 16 * 4);

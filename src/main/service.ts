@@ -22,11 +22,15 @@ export class AppService {
   private db: Stored = { version: 1, deviceId: randomUUID(), items: [], dirtyIds: [], pins: {}, config: null, activeOwnerId: null, lastSyncedAt: null };
   private cloud: CloudAdapter | null = null;
   private queue: Promise<unknown> = Promise.resolve();
+  private syncFlight: Promise<void> | null = null;
+  private sessionEpoch = 0;
+  private disposed = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private sync: SyncState = { configured: false, status: 'unconfigured', email: null, pending: 0, lastSyncedAt: null, error: null };
   constructor(private hooks: RuntimeHooks, private factory: (config: CloudConfig, hooks: RuntimeHooks) => CloudAdapter = createCloud) {}
   private serial<T>(fn: () => Promise<T>): Promise<T> { const result = this.queue.then(fn); this.queue = result.catch(() => {}); return result; }
   private commit(next: Stored) { this.hooks.saveData(next); this.db = next; }
+  getWorkspaceKey() { return this.scope(); }
   private scope() { return this.db.activeOwnerId ? `${this.db.config?.url ?? 'local'}:${this.db.activeOwnerId}` : 'local:guest'; }
   private publish() { const snapshot = this.getSnapshot(); this.hooks.broadcast(snapshot); this.hooks.pinsChanged(snapshot.pinnedIds); }
   getSnapshot(): AppSnapshot {
@@ -38,13 +42,31 @@ export class AppService {
     this.sync.configured = !!this.db.config;
     if (this.db.config) {
       this.cloud = this.factory(this.db.config, this.hooks);
-      try { const user = await this.cloud.identity(); this.commit({ ...this.db, activeOwnerId: user?.id ?? null }); this.sync.email = user?.email ?? null; this.sync.status = user ? 'offline' : 'signed-out'; }
-      catch { this.sync.status = this.db.activeOwnerId ? 'offline' : 'signed-out'; this.sync.error = '暂时无法验证云端会话'; }
+      this.sync.status = this.db.activeOwnerId ? 'offline' : 'signed-out';
     }
     this.publish(); this.timer = setInterval(() => { if (this.db.activeOwnerId) void this.syncNow().catch(() => {}); }, 30000); this.timer.unref?.();
-    if (this.db.activeOwnerId) void this.syncNow().catch(() => {});
   }); }
-  dispose() { if (this.timer) clearInterval(this.timer); }
+  // Session recovery must never occupy the mutation queue while waiting for the network.
+  async resumeCloudSession() {
+    const cloud = this.cloud, epoch = this.sessionEpoch, owner = this.db.activeOwnerId;
+    if (!cloud || this.disposed) return;
+    let user: Awaited<ReturnType<CloudAdapter['identity']>>;
+    try { user = await cloud.identity(); }
+    catch {
+      await this.serial(async () => {
+        if (this.disposed || this.cloud !== cloud || this.sessionEpoch !== epoch || this.db.activeOwnerId !== owner) return;
+        this.sync.status = owner ? 'offline' : 'signed-out'; this.sync.error = '暂时无法验证云端会话'; this.publish();
+      });
+      return;
+    }
+    await this.serial(async () => {
+      if (this.disposed || this.cloud !== cloud || this.sessionEpoch !== epoch || this.db.activeOwnerId !== owner) return;
+      this.commit({ ...this.db, activeOwnerId: user?.id ?? null });
+      this.sync.email = user?.email ?? null; this.sync.status = user ? 'offline' : 'signed-out'; this.sync.error = null; this.publish();
+    });
+    if (!this.disposed && this.cloud === cloud && this.sessionEpoch === epoch && user && this.db.activeOwnerId === user.id) void this.syncNow().catch(() => {});
+  }
+  dispose() { this.disposed = true; this.sessionEpoch++; if (this.timer) clearInterval(this.timer); }
   private find(id: string) { const item = this.db.items.find(i => i.id === id && i.ownerId === this.db.activeOwnerId && !i.deletedAt); if (!item) throw new Error('条目不存在'); return item; }
   private timestamp(previous?: string) { return new Date(Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0)).toISOString(); }
   private saveItem(item: Item) { const next = structuredClone(this.db); const index = next.items.findIndex(i => i.id === item.id && i.ownerId === item.ownerId); if (index < 0) next.items.push(item); else next.items[index] = item; if (!next.dirtyIds.includes(item.id)) next.dirtyIds.push(item.id); this.commit(next); if (this.db.activeOwnerId) this.sync.status = 'offline'; this.publish(); }
@@ -55,7 +77,7 @@ export class AppService {
   unpinItem(id: string) { return this.serial(async () => { const next = structuredClone(this.db); next.pins[this.scope()] = (next.pins[this.scope()] ?? []).filter(x => x !== id); this.commit(next); this.publish(); }); }
   async getCloudConfig() { return structuredClone(this.db.config); }
   setCloudConfig(config: CloudConfig) { return this.serial(async () => {
-    const valid = validateConfig(config); const next = structuredClone(this.db); const oldUrl = next.config?.url ?? 'local';
+    const valid = validateConfig(config); this.sessionEpoch++; const next = structuredClone(this.db); const oldUrl = next.config?.url ?? 'local';
     next.projectCaches ??= {}; next.projectCaches[oldUrl] = { items: next.items.filter(i => i.ownerId !== null), dirtyIds: next.dirtyIds.filter(id => next.items.some(i => i.id === id && i.ownerId !== null)) };
     const guest = next.items.filter(i => i.ownerId === null); const guestDirty = next.dirtyIds.filter(id => guest.some(i => i.id === id)); const cache = next.projectCaches[valid.url] ?? { items: [], dirtyIds: [] };
     next.items = [...guest, ...cache.items]; next.dirtyIds = [...guestDirty, ...cache.dirtyIds]; next.config = valid; next.activeOwnerId = null; next.lastSyncedAt = null;
@@ -64,22 +86,53 @@ export class AppService {
   sendOtp(email: string) { return this.serial(async () => { if (!this.cloud) throw new Error('请先配置云端'); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('邮箱格式无效'); await this.cloud.sendOtp(email.trim()); }); }
   verifyOtp(email: string, token: string) { return this.serial(async () => {
     if (!this.cloud) throw new Error('请先配置云端'); if (!/^\d{6,10}$/.test(token)) throw new Error('请输入邮件中的数字验证码');
+    this.sessionEpoch++;
     const user = await this.cloud.verifyOtp(email.trim(), token); try { this.commit({ ...this.db, activeOwnerId: user.id, lastSyncedAt: null }); } catch (error) { await this.cloud.signOut(); await this.hooks.writeSecret(null); throw error; }
-    this.sync.email = user.email; this.sync.status = 'offline'; this.sync.error = null; this.publish(); await this.runSync().catch(() => {});
-  }); }
-  signOut() { return this.serial(async () => { await this.hooks.writeSecret(null); this.commit({ ...this.db, activeOwnerId: null, lastSyncedAt: null }); if (this.db.config) this.cloud = this.factory(this.db.config, this.hooks); this.sync.email = null; this.sync.status = this.db.config ? 'signed-out' : 'unconfigured'; this.sync.error = null; this.publish(); }); }
-  syncNow() { return this.serial(() => this.runSync()); }
+    this.sync.email = user.email; this.sync.status = 'offline'; this.sync.error = null; this.publish();
+  }).then(() => this.syncNow().catch(() => {})); }
+  signOut() { return this.serial(async () => { this.sessionEpoch++; await this.hooks.writeSecret(null); this.commit({ ...this.db, activeOwnerId: null, lastSyncedAt: null }); if (this.db.config) this.cloud = this.factory(this.db.config, this.hooks); this.sync.email = null; this.sync.status = this.db.config ? 'signed-out' : 'unconfigured'; this.sync.error = null; this.publish(); }); }
+  syncNow() {
+    if (this.syncFlight) return this.syncFlight;
+    const running = this.runSync();
+    this.syncFlight = running;
+    void running.finally(() => { if (this.syncFlight === running) this.syncFlight = null; }).catch(() => {});
+    return running;
+  }
   private async runSync() {
-    if (!this.cloud || !this.db.activeOwnerId) return;
+    const cloud = this.cloud, owner = this.db.activeOwnerId, epoch = this.sessionEpoch;
+    if (!cloud || !owner || this.disposed) return;
+    const current = () => !this.disposed && this.cloud === cloud && this.db.activeOwnerId === owner && this.sessionEpoch === epoch;
+    const outgoing = structuredClone(this.db.items.filter(i => i.ownerId === owner && this.db.dirtyIds.includes(i.id)));
     this.sync.status = 'syncing'; this.sync.error = null; this.publish();
     try {
-      const owner = this.db.activeOwnerId; const identity = await this.cloud.identity(); if (!identity || identity.id !== owner) throw new Error('云端登录已失效，请退出后重新登录');
-      const outgoing = this.db.items.filter(i => i.ownerId === owner && this.db.dirtyIds.includes(i.id));
-      await this.cloud.upload(outgoing); const incoming = await this.cloud.download(owner);
+      const identity = await cloud.identity();
+      if (!identity || identity.id !== owner) throw new Error('云端登录已失效，请退出后重新登录');
+      if (!current()) return;
+      await cloud.upload(outgoing);
+      if (!current()) return;
+      const incoming = await cloud.download(owner);
       if (!incoming.every(i => validItem(i) && i.ownerId === owner)) throw new Error('云端返回的数据无效');
-      const next = structuredClone(this.db); for (const item of incoming) { const index = next.items.findIndex(i => i.id === item.id && i.ownerId === owner); if (index < 0) next.items.push(item); else if (compareItems(item, next.items[index]) >= 0) next.items[index] = item; }
-      next.dirtyIds = next.dirtyIds.filter(id => !outgoing.some(i => i.id === id)); next.lastSyncedAt = new Date().toISOString(); this.commit(next); this.sync.status = 'synced'; this.sync.email = identity.email; this.publish();
-    } catch { this.sync.status = 'offline'; this.sync.error = '云端同步未完成。更改已保留在本机，请检查网络、登录和项目配置后重试。'; this.publish(); throw new Error(this.sync.error); }
+      await this.serial(async () => {
+        if (!current()) return;
+        const next = structuredClone(this.db);
+        // Only acknowledge the exact revisions sent; edits made during network I/O stay dirty.
+        next.dirtyIds = next.dirtyIds.filter(id => {
+          const sent = outgoing.find(i => i.id === id), local = next.items.find(i => i.id === id && i.ownerId === owner);
+          return !sent || !local || compareItems(sent, local) !== 0;
+        });
+        for (const item of incoming) {
+          const index = next.items.findIndex(i => i.id === item.id && i.ownerId === owner);
+          if (index < 0) next.items.push(item);
+          else if (compareItems(item, next.items[index]) >= 0) next.items[index] = item;
+        }
+        next.lastSyncedAt = new Date().toISOString(); this.commit(next);
+        this.sync.status = next.dirtyIds.some(id => next.items.some(i => i.id === id && i.ownerId === owner)) ? 'offline' : 'synced';
+        this.sync.email = identity.email; this.publish();
+      });
+    } catch {
+      if (!current()) return;
+      this.sync.status = 'offline'; this.sync.error = '云端同步未完成。更改已保留在本机，请检查网络、登录和项目配置后重试。'; this.publish(); throw new Error(this.sync.error);
+    }
   }
   exportData() { return this.serial(async () => this.hooks.exportJson(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: this.getSnapshot().items }, null, 2))); }
 }

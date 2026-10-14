@@ -52,9 +52,9 @@ describe('durable isolated application state', () => {
     await service.setCloudConfig({ ...config, url: 'https://xyz.supabase.co' }); await service.verifyOtp('user@example.com', '123456'); expect(service.getSnapshot().items).toHaveLength(0); expect(env.server.has(item.id)).toBe(false);
     await service.setCloudConfig(config); await service.verifyOtp('user@example.com', '123456'); expect(service.getSnapshot().items[0].id).toBe(item.id);
   });
-  it('queues edits behind sync without clearing new work', async () => {
+  it('allows edits during sync without clearing new work', async () => {
     const env = setup(); const service = env.make(); await service.initialize(); await login(service); const item = await service.createItem({ kind: 'task', title: 'before' });
-    let release!: () => void; env.setGate(new Promise<void>(resolve => { release = resolve; })); const sync = service.syncNow(); const edit = service.updateItem(item.id, { title: 'after' }); release(); await sync; await edit;
+    let release!: () => void; env.setGate(new Promise<void>(resolve => { release = resolve; })); const sync = service.syncNow(); await service.updateItem(item.id, { title: 'after' }); expect(service.getSnapshot().items[0].title).toBe('after'); release(); await sync;
     expect(service.getSnapshot().items[0].title).toBe('after'); expect(service.getSnapshot().sync.pending).toBe(1); expect(env.server.get(item.id)?.title).toBe('before');
   });
   it('honors a newer server tombstone instead of reviving it', async () => {

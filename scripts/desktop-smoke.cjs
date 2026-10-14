@@ -36,6 +36,7 @@ void (async () => {
   assert.equal(main.webContents.getLastWebPreferences().contextIsolation, true);
   assert.equal(main.webContents.getLastWebPreferences().sandbox, true);
   if (phase === 'create') {
+    await code(main, "localStorage.setItem('pinboard.compact.v1','off')");
     assert.equal((await snapshot(main)).items.length, 0);
     await capture(main, 'empty.png');
     console.log('Checking UI task creation');

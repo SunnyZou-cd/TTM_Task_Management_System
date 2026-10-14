@@ -1,0 +1,20 @@
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const require = createRequire(import.meta.url);
+const work = path.resolve('work');
+fs.mkdirSync(work, { recursive: true });
+const directory = fs.mkdtempSync(path.join(work, 'obsidian-test-'));
+const vault = path.join(directory, 'vault');
+fs.mkdirSync(vault);
+fs.writeFileSync(path.join(vault, 'roadmap.md'), '# Roadmap\n\n- [ ] Ship the bridge\n', 'utf8');
+const env = { ...process.env, PINBOARD_TEST_MODE: '1', PINBOARD_DATA_DIR: path.join(directory, 'data'), PINBOARD_TEST_VAULT: vault };
+delete env.ELECTRON_RUN_AS_NODE;
+const child = spawn(require('electron'), [path.resolve('scripts/obsidian-smoke.cjs')], { env, stdio: 'inherit' });
+const timer = setTimeout(() => child.kill(), 60000);
+const status = await new Promise(resolve => child.once('exit', resolve));
+clearTimeout(timer);
+if (status !== 0) throw new Error(`Obsidian IPC 验收失败 (${status})，临时数据：${directory}`);
+console.log('Obsidian IPC 集成验收通过。');

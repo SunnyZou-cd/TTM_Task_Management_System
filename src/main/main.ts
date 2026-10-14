@@ -1,5 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import type { ObsidianBridge } from './obsidian';
 import { AppService } from './service';
 import { atomicWrite, persistence } from './persistence';
 import { WindowManager } from './windows';
@@ -41,6 +44,30 @@ else {
     });
     await service.initialize();
     initialized = true;
+    let restoring: Promise<void> = Promise.resolve();
+    let workspaceQueue: Promise<unknown> = Promise.resolve();
+    const workspaceOperation = <T,>(fn: () => Promise<T>): Promise<T> => {
+      const result = workspaceQueue.then(async () => { await restoring; return fn(); });
+      workspaceQueue = result.catch(() => {});
+      return result;
+    };
+    let obsidian: ObsidianBridge | undefined;
+    const getObsidian = async () => {
+      if (!obsidian) {
+        const { ObsidianBridge } = await import('./obsidian');
+        const file = path.join(directory, 'obsidian-links.json');
+        obsidian = new ObsidianBridge({
+          loadState: () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null,
+          saveState: state => atomicWrite(file, JSON.stringify(state, null, 2)),
+          getScope: () => service.getWorkspaceKey(),
+          getItems: () => service.getSnapshot().items,
+          createItem: input => service.createItem(input),
+          updateItem: (id, patch) => service.updateItem(id, patch),
+        });
+      }
+      return obsidian;
+    };
+    let selection: { token: string; root: string; scope: string } | null = null;
     ipcMain.on('pinboard:close-result', (event, requestId: unknown, success: unknown) => {
       if (!windows?.owns(event.sender) || !event.senderFrame || event.senderFrame !== event.sender.mainFrame || !windows.trustedUrl(event.senderFrame.url)) return;
       if (typeof requestId === 'string' && typeof success === 'boolean') windows.closeResult(event.sender, requestId, success);
@@ -56,12 +83,30 @@ else {
     for (const method of methods) register(method, (_event, ...args) => {
       // AppService validates all domain inputs; the IPC boundary restricts the allowed methods.
       const action = service[method] as (...values: unknown[]) => unknown;
+      if (['setCloudConfig', 'verifyOtp', 'signOut'].includes(method)) return workspaceOperation(async () => action.apply(service, args));
       return action.apply(service, args);
     });
+    register('chooseObsidianFolder', () => workspaceOperation(async () => {
+      const chosen = await dialog.showOpenDialog({ title: '选择 Obsidian 笔记文件夹', properties: ['openDirectory'] });
+      if (chosen.canceled || !chosen.filePaths[0]) return null;
+      const bridge = await getObsidian();
+      const preview = await bridge.preview(chosen.filePaths[0]);
+      selection = { token: randomUUID(), root: chosen.filePaths[0], scope: service.getWorkspaceKey() };
+      return { ...preview, token: selection.token };
+    }));
+    register('importObsidian', (_event, token) => workspaceOperation(async () => {
+      if (!selection || typeof token !== 'string' || token !== selection.token || selection.scope !== service.getWorkspaceKey()) throw new Error('目录选择已失效，请重新选择并预览。');
+      return (await getObsidian()).import(selection.root);
+    }));
+    register('syncObsidian', () => workspaceOperation(async () => (await getObsidian()).sync()));
     register('openMain', () => windows?.openMain());
     register('setAlwaysOnTop', (_event, id, enabled) => {
       if (typeof id !== 'string' || typeof enabled !== 'boolean') throw new Error('便笺置顶参数不正确。');
       windows?.setAlwaysOnTop(id, enabled);
+    });
+    register('setNoteExpanded', (event, id, expanded) => {
+      if (typeof id !== 'string' || typeof expanded !== 'boolean' || windows?.notes.get(id)?.webContents !== event.sender) throw new Error('只能调整当前便笺窗口。');
+      windows?.setNoteExpanded(id, expanded);
     });
     register('windowControl', (event, action) => {
       const window = BrowserWindow.fromWebContents(event.sender);
@@ -74,6 +119,7 @@ else {
     windows.createTray();
     windows.openMain();
     windows.pinsChanged((await service.getSnapshot()).pinnedIds);
+    restoring = service.resumeCloudSession().catch(error => { console.error('云端会话恢复失败', error); });
   }).catch(error => {
     dialog.showErrorBox('Pinboard 无法启动', error instanceof Error ? error.message : String(error));
     app.quit();

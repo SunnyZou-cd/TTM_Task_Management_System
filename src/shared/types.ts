@@ -1,3 +1,4 @@
+import type { ObsidianPreview, ObsidianResult } from './obsidian';
 export type ItemKind = 'task' | 'note';
 export type NoteColor = 'sage' | 'yellow' | 'blue' | 'rose';
 export interface Item {
@@ -46,6 +47,10 @@ export interface PinboardAPI {
   pinItem(id: string): Promise<void>;
   unpinItem(id: string): Promise<void>;
   setAlwaysOnTop(id: string, enabled: boolean): Promise<void>;
+  setNoteExpanded(id: string, expanded: boolean): Promise<void>;
+  chooseObsidianFolder(): Promise<(ObsidianPreview & { token: string }) | null>;
+  importObsidian(token: string): Promise<ObsidianResult>;
+  syncObsidian(): Promise<ObsidianResult>;
   openMain(): Promise<void>;
   windowControl(action: 'minimize' | 'close' | 'quit'): Promise<void>;
   getCloudConfig(): Promise<CloudConfig | null>;

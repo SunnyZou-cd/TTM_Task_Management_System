@@ -1,6 +1,6 @@
 {
   "name": "pinboard-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "轻量任务管理与桌面悬浮便笺",
   "private": true,
   "license": "MIT",
@@ -18,7 +18,8 @@
     "test:desktop": "npm run build && node scripts/test-desktop.mjs",
     "start": "electron .",
     "package": "npm run build && electron-builder --win --dir",
-    "dist": "npm run build && electron-builder --win portable"
+    "dist": "npm run build && electron-builder --win nsis",
+    "dist:portable": "npm run build && electron-builder --win portable"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.3",
@@ -51,12 +52,19 @@
     "asar": true,
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ],
       "signAndEditExecutable": false
     },
     "portable": {
       "artifactName": "Pinboard-${version}-Windows.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "Pinboard-${version}-Setup.exe"
     }
   }
 }
