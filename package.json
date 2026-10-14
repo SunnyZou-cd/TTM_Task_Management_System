@@ -1,0 +1,62 @@
+{
+  "name": "pinboard-desktop",
+  "version": "0.1.0",
+  "description": "轻量任务管理与桌面悬浮便笺",
+  "private": true,
+  "license": "MIT",
+  "author": "SunnyZou-cd",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SunnyZou-cd/TTM_Task_Management_System.git"
+  },
+  "main": "dist-main/main/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run typecheck && vite build && tsc -p tsconfig.main.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
+    "test": "vitest run",
+    "test:desktop": "npm run build && node scripts/test-desktop.mjs",
+    "start": "electron .",
+    "package": "npm run build && electron-builder --win --dir",
+    "dist": "npm run build && electron-builder --win portable"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.3",
+    "lucide-react": "^0.577.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "electron": "44.7.2",
+    "electron-builder": "26.15.3",
+    "typescript": "^5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.4"
+  },
+  "build": {
+    "appId": "dev.pinboard.desktop",
+    "productName": "Pinboard",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-main/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "Pinboard-${version}-Windows.exe"
+    }
+  }
+}
