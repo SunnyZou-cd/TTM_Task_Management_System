@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppService, compareItems } from '../src/main/service';
 import type { CloudAdapter } from '../src/main/cloud';
 import type { Database, Item, RuntimeHooks } from '../src/shared/types';
 const services: AppService[] = [];
-afterEach(() => { services.splice(0).forEach(service => service.dispose()); });
+afterEach(() => { services.splice(0).forEach(service => service.dispose()); vi.useRealTimers(); });
 function setup() {
   let stored: Database | null = null; let failSave = false; let online = true; let user = 'account-a'; let authenticated = false;
   const server = new Map<string, Item>(); let gate: Promise<void> | null = null;
@@ -63,5 +63,75 @@ describe('durable isolated application state', () => {
   });
   it('rejects corrupt storage rather than silently replacing it', async () => {
     const env = setup(); env.hooks.loadData = () => ({ version: 1, items: [{ title: 'broken' }] } as unknown as Database); await expect(env.make().initialize()).rejects.toThrow('损坏');
+  });
+});
+
+describe('task labels, archives, and fixed schedules', () => {
+  function freeze() { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 14, 10)); }
+  it('normalizes labels and rejects malformed metadata', async () => {
+    const env = setup(), service = env.make(); await service.initialize();
+    const task = await service.createItem({ kind: 'task', title: 'label', tags: ['  研究 ', '研究'], dueDate: '2026-10-14', dueTime: '12:00' }); expect(task.tags).toEqual(['研究']);
+    await expect(service.updateItem(task.id, { dueTime: '25:00' })).rejects.toThrow('无效');
+    await expect(service.updateItem(task.id, { tags: [''] })).rejects.toThrow('无效');
+    await expect(service.createItem({ kind: 'task', title: 'bad', recurrence: { frequency: 'daily', interval: 1 } })).rejects.toThrow('无效');
+    await expect(service.createItem({ kind: 'note', title: 'bad', dueDate: '2026-10-14', recurrence: { frequency: 'daily', interval: 1 } })).rejects.toThrow('无效');
+  });
+  it('keeps completed items available while removing their desktop pins', async () => {
+    const env = setup(), service = env.make(); await service.initialize();
+    const item = await service.createItem({ kind: 'task', title: 'done' }); await service.pinItem(item.id); await service.updateItem(item.id, { completed: true });
+    expect(service.getSnapshot().items[0].completed).toBe(true); expect(service.getSnapshot().pinnedIds).not.toContain(item.id);
+    await service.updateItem(item.id, { completed: false }); expect(service.getSnapshot().pinnedIds).toContain(item.id);
+  });
+  it('generates scheduled instances regardless of completion, and repeated calls do not duplicate', async () => {
+    freeze(); const env = setup(), service = env.make(); await service.initialize();
+    const root = await service.createItem({ kind: 'task', title: 'daily', dueDate: '2026-10-13', dueTime: '09:00', tags: ['routine'], recurrence: { frequency: 'daily', interval: 1 } });
+    expect(service.getSnapshot().items).toHaveLength(2); const child = service.getSnapshot().items.find(item => item.seriesId === root.id)!;
+    expect(child).toMatchObject({ dueDate: '2026-10-14', recurrence: null, recurrenceIndex: 1, tags: ['routine'], completed: false });
+    await service.updateItem(root.id, { completed: true }); await service.updateItem(root.id, { completed: true }); expect(await service.materializeRecurring()).toBe(0);
+    vi.setSystemTime(new Date(2026, 9, 15, 10)); expect(await service.materializeRecurring()).toBe(1); expect(service.getSnapshot().items).toHaveLength(3);
+  });
+  it('commits a completion and its scheduled children atomically and rolls all back on save failure', async () => {
+    freeze(); const env = setup(), service = env.make(); await service.initialize();
+    const root = await service.createItem({ kind: 'task', title: 'daily', dueDate: '2026-10-14', recurrence: { frequency: 'daily', interval: 1 } });
+    vi.setSystemTime(new Date(2026, 9, 15, 10)); env.setFail(true);
+    await expect(service.updateItem(root.id, { completed: true })).rejects.toThrow('disk full'); expect(service.getSnapshot().items).toHaveLength(1); expect(service.getSnapshot().items[0].completed).toBe(false);
+    env.setFail(false); let saves = 0; const save = env.hooks.saveData; env.hooks.saveData = database => { saves++; save(database); };
+    await service.updateItem(root.id, { completed: true }); expect(saves).toBe(1); expect(service.getSnapshot().items).toHaveLength(2);
+  });
+  it('stops future generation when the root is disabled and never revives a deleted occurrence', async () => {
+    freeze(); const env = setup(), service = env.make(); await service.initialize();
+    const root = await service.createItem({ kind: 'task', title: 'daily', dueDate: '2026-10-13', recurrence: { frequency: 'daily', interval: 1 } });
+    const child = service.getSnapshot().items.find(item => item.seriesId)!; await service.deleteItem(child.id); expect(await service.materializeRecurring()).toBe(0);
+    await expect(service.updateItem(child.id, { recurrence: { frequency: 'daily', interval: 1 } })).rejects.toThrow();
+    await service.updateItem(root.id, { recurrence: null }); vi.setSystemTime(new Date(2026, 9, 20)); expect(await service.materializeRecurring()).toBe(0); expect(service.getSnapshot().items).toHaveLength(1);
+  });
+  it('accepts old v1 records, enriches only explicit imported metadata, and preserves explicit dates', async () => {
+    freeze(); const env = setup(), service = env.make(); await service.initialize();
+    const imported = await service.createItem({ kind: 'task', title: 'Lab 📅 2026-08-30 #physics [[Projects/Lab]]', body: '来源：Daily.md' });
+    const explicit = await service.createItem({ kind: 'task', title: 'Keep 📅 2026-08-30', body: '来源：Daily.md', dueDate: '2026-10-15' });
+    const ordinary = await service.createItem({ kind: 'task', title: 'Plain 📅 2026-08-30 #physics' });
+    const oldLoad = env.hooks.loadData; env.hooks.loadData = () => { const data = oldLoad()!; for (const item of data.items) { delete item.tags; delete item.dueTime; delete item.recurrence; } return data; };
+    const restarted = env.make(); await restarted.initialize();
+    expect(restarted.getSnapshot().items.find(item => item.id === imported.id)).toMatchObject({ dueDate: '2026-08-30', tags: ['physics', 'Lab'], dueTime: null });
+    expect(restarted.getSnapshot().items.find(item => item.id === explicit.id)?.dueDate).toBe('2026-10-15');
+    expect(restarted.getSnapshot().items.find(item => item.id === ordinary.id)).toMatchObject({ dueDate: null, tags: [] });
+    // Once migrated, intentional metadata removal must survive another restart.
+    env.hooks.loadData = oldLoad;
+    await restarted.updateItem(imported.id, { dueDate: null, tags: [] });
+    const again = env.make(); await again.initialize();
+    expect(again.getSnapshot().items.find(item => item.id === imported.id)).toMatchObject({ dueDate: null, tags: [] });
+  });
+  it('uses identical legal UUID occurrence IDs after independent offline device generation', async () => {
+    freeze(); const env = setup(), first = env.make(); await first.initialize();
+    const root = await first.createItem({ kind: 'task', title: 'same series', dueDate: '2026-10-14', recurrence: { frequency: 'daily', interval: 1 } });
+    const seed = env.hooks.loadData()!; env.hooks.loadData = () => ({ ...structuredClone(seed), deviceId: 'second-device' }); const second = env.make(); await second.initialize();
+    vi.setSystemTime(new Date(2026, 9, 15, 10)); await first.materializeRecurring(); await second.materializeRecurring();
+    const a = first.getSnapshot().items.find(item => item.seriesId === root.id)!, b = second.getSnapshot().items.find(item => item.seriesId === root.id)!;
+    expect(a.id).toBe(b.id); expect(a.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/); expect(a.deviceId).not.toBe(b.deviceId);
+  });
+  it('rejects malformed newly present optional fields in stored data', async () => {
+    const env = setup(), service = env.make(); await service.initialize(); await service.createItem({ kind: 'task', title: 'valid' });
+    const oldLoad = env.hooks.loadData; env.hooks.loadData = () => { const data = oldLoad()!; data.items[0].tags = 'bad' as unknown as string[]; return data; };
+    await expect(env.make().initialize()).rejects.toThrow('损坏');
   });
 });

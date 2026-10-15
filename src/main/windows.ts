@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { atomicWrite } from './persistence';
 import type { AppSnapshot } from '../shared/types';
+import { createDesktopCompatibleWindow, DesktopHost, type MainDisplayMode } from './desktop-host';
 
 export class WindowManager {
   main: BrowserWindow | null = null;
@@ -19,6 +20,11 @@ export class WindowManager {
   private closing = new Set<number>();
   private pending = new Map<string, { contents: Electron.WebContents; finish: (success: boolean) => void }>();
   private guards = new Map<number, Promise<boolean>>();
+  private desktopHost: DesktopHost | null = null;
+  private displayMode: MainDisplayMode = 'window';
+  private displayModeReason = '';
+  private displayModeQueue: Promise<unknown> = Promise.resolve();
+  private windowPlacement: { bounds: Electron.Rectangle; maximized: boolean; fullscreen: boolean; alwaysOnTop: boolean; visible: boolean } | null = null;
   readonly rendererUrl: string;
   constructor(directory: string, private unpin: (id: string) => Promise<void>) {
     this.boundsFile = path.join(directory, 'window-bounds.json');
@@ -81,13 +87,14 @@ export class WindowManager {
     return { width, height, x: Math.max(area.x, Math.min(candidate.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(candidate.y, area.y + area.height - height)) };
   }
   private make(noteId?: string) {
-    const window = new BrowserWindow({
+    const create = () => new BrowserWindow({
       ...(noteId ? this.clamp(this.bounds[noteId]) : { width: 1120, height: 780 }),
       minWidth: noteId ? 260 : 760, minHeight: noteId ? 220 : 560,
       title: noteId ? 'Pinboard 便笺' : 'Pinboard', frame: false, resizable: true,
       alwaysOnTop: !!noteId, show: false, backgroundColor: '#ffffff',
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, backgroundThrottling: process.env.PINBOARD_TEST_MODE !== '1' },
     });
+    const window = noteId ? create() : createDesktopCompatibleWindow(create);
     const contents = window.webContents;
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event, url) => { if (!this.trustedUrl(url)) event.preventDefault(); });
@@ -134,9 +141,83 @@ export class WindowManager {
     return window;
   }
   openMain() {
-    if (this.main && !this.main.isDestroyed()) { if (process.env.PINBOARD_TEST_MODE !== '1') { this.main.show(); this.main.restore(); this.main.focus(); } return; }
+    if (this.main && !this.main.isDestroyed()) {
+      if (process.env.PINBOARD_TEST_MODE !== '1') {
+        if (this.displayMode === 'desktop' && this.desktopHost) void this.desktopHost.show().catch(error => this.recoverDesktop(String(error)));
+        else { this.main.show(); this.main.restore(); this.main.focus(); }
+      }
+      return;
+    }
     this.main = this.make();
-    this.main.on('closed', () => { this.main = null; });
+    this.main.on('closed', () => {
+      this.main = null;
+      this.displayMode = 'window'; this.windowPlacement = null;
+      const host = this.desktopHost; this.desktopHost = null;
+      if (host) void host.dispose().catch(error => console.error('桌面辅助进程清理失败', error));
+    });
+  }
+  getMainDisplayMode(): MainDisplayMode { return this.displayMode; }
+  getMainDisplayModeReason() { return this.displayModeReason; }
+  /** Requests are serialized so rapid settings changes cannot strand a child HWND. */
+  setMainDisplayMode(mode: MainDisplayMode): Promise<MainDisplayMode> {
+    if (mode !== 'window' && mode !== 'desktop') return Promise.reject(new Error('未知窗口显示模式。'));
+    const operation = this.displayModeQueue.then(async () => {
+      if (!this.main || this.main.isDestroyed()) this.openMain();
+      const window = this.main!;
+      if (mode === this.displayMode) return this.displayMode;
+      this.displayModeReason = '';
+      if (mode === 'window') { await this.recoverDesktop(); return this.displayMode; }
+      this.windowPlacement = { bounds: window.getNormalBounds(), maximized: window.isMaximized(), fullscreen: window.isFullScreen(), alwaysOnTop: window.isAlwaysOnTop(), visible: window.isVisible() };
+      if (window.isFullScreen()) window.setFullScreen(false);
+      if (window.isMaximized()) window.unmaximize();
+      if (window.isMinimized()) window.restore();
+      window.setAlwaysOnTop(false);
+      const host = new DesktopHost(reason => this.recoverDesktop(reason));
+      this.desktopHost = host;
+      try {
+        await host.attach(window);
+        if (window.isDestroyed() || this.main !== window || this.desktopHost !== host) throw new Error('主窗口或桌面连接已关闭。');
+        window.setSkipTaskbar(true);
+        this.displayMode = 'desktop';
+        if (process.env.PINBOARD_TEST_MODE !== '1') await host.show();
+        this.notifyDisplayMode();
+      } catch (error) {
+        await this.recoverDesktop(error instanceof Error ? error.message : String(error));
+      }
+      return this.displayMode;
+    });
+    this.displayModeQueue = operation.catch(() => undefined);
+    return operation;
+  }
+  private notifyDisplayMode() {
+    if (this.main && !this.main.isDestroyed()) this.main.webContents.send('pinboard:display-mode', { mode: this.displayMode, reason: this.displayModeReason });
+  }
+  private async recoverDesktop(reason = '') {
+    const host = this.desktopHost;
+    this.desktopHost = null;
+    const placement = this.windowPlacement;
+    this.windowPlacement = null;
+    let failed = false;
+    if (host) {
+      try { await host.dispose(); }
+      catch (error) { failed = true; console.error('恢复桌面窗口失败', error); }
+    }
+    this.displayMode = 'window'; this.displayModeReason = reason;
+    // If a stale Explorer HWND was destroyed, recreate only our own BrowserWindow.
+    if (failed && this.main && !this.main.isDestroyed()) { this.main.destroy(); }
+    if (!this.main || this.main.isDestroyed()) {
+      if (!this.quitting && placement) this.openMain();
+    }
+    const window = this.main;
+    if (window && !window.isDestroyed() && placement) {
+      window.setSkipTaskbar(false);
+      window.setBounds(placement.bounds);
+      window.setAlwaysOnTop(placement.alwaysOnTop);
+      if (placement.maximized) window.maximize();
+      if (placement.fullscreen) window.setFullScreen(true);
+      if (process.env.PINBOARD_TEST_MODE !== '1' && placement.visible) window.show();
+    }
+    this.notifyDisplayMode();
   }
   pinsChanged(ids: string[]) {
     if (this.quitting) return;

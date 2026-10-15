@@ -100,6 +100,12 @@ else {
     }));
     register('syncObsidian', () => workspaceOperation(async () => (await getObsidian()).sync()));
     register('openMain', () => windows?.openMain());
+    register('getMainDisplayMode', () => windows?.getMainDisplayMode() ?? 'window');
+    register('setMainDisplayMode', async (event, mode) => {
+      if (windows?.main?.webContents !== event.sender || (mode !== 'window' && mode !== 'desktop')) throw new Error('请在主窗口选择显示模式。');
+      const actual = await windows.setMainDisplayMode(mode);
+      if (actual !== mode) throw new Error(windows.getMainDisplayModeReason() || '桌面模式不可用，已恢复普通窗口。');
+    });
     register('setAlwaysOnTop', (_event, id, enabled) => {
       if (typeof id !== 'string' || typeof enabled !== 'boolean') throw new Error('便笺置顶参数不正确。');
       windows?.setAlwaysOnTop(id, enabled);

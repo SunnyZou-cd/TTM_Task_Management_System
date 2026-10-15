@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import type { CreateItemInput, Item, ItemPatch } from '../shared/types';
+import { parseTaskMetadata } from '../shared/task-rules';
 import type { ObsidianPreview, ObsidianResult, ObsidianState, ObsidianFileLink as FileLink } from '../shared/obsidian';
 export type { ObsidianPreview, ObsidianResult, ObsidianState } from '../shared/obsidian';
 
@@ -181,7 +182,8 @@ export class ObsidianBridge {
         if (file.tasks.some(t => t.key === task.key)) continue;
         if (task.title.length > 300) { result.warnings.push(`${document.relativePath}:${task.line} 任务标题超过 300 字，保留在笔记正文中。`); continue; }
         if (this.hooks.getScope() !== scope) throw new Error('账户已切换，请重新开始导入。');
-        const item = await this.hooks.createItem({ kind: 'task', title: task.title, body: `来源：${document.relativePath}` });
+        const metadata = parseTaskMetadata(task.title);
+        const item = await this.hooks.createItem({ kind: 'task', title: task.title, body: `来源：${document.relativePath}`, dueDate: metadata.dueDate ?? null, tags: metadata.tags });
         if (task.completed) await this.hooks.updateItem(item.id, { completed: true });
         file.tasks.push({ key: task.key, id: item.id, baseCompleted: task.completed });
         this.hooks.saveState(state);

@@ -1,6 +1,6 @@
 {
   "name": "pinboard-desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "轻量任务管理与桌面悬浮便笺",
   "private": true,
   "license": "MIT",
@@ -23,9 +23,13 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.3",
+    "koffi": "^3.3.3",
     "lucide-react": "^0.577.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

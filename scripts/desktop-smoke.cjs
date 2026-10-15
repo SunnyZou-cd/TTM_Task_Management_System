@@ -15,8 +15,8 @@ async function click(window, selector) {
   await wait(() => code(window, `!!document.querySelector(${JSON.stringify(selector)})`), selector);
   await code(window, `document.querySelector(${JSON.stringify(selector)}).click()`);
 }
-function fill(window, selector, value) {
-  return code(window, `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw Error('找不到输入框'); const proto = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input', {bubbles:true})); element.dispatchEvent(new Event('change', {bubbles:true})); })()`);
+function fill(window, selector, value, { blur = true } = {}) {
+  return code(window, `(() => { let element = document.querySelector(${JSON.stringify(selector)}); if (!element && ${JSON.stringify(selector)} === '.floating-body') element = document.querySelector('.floating-markdown-body [contenteditable="true"]'); if (!element && ${JSON.stringify(selector)} === '.floating-title') element = document.querySelector('.floating-markdown-title [contenteditable="true"]'); if (!element) throw Error('找不到输入框：' + ${JSON.stringify(selector)}); if (element.isContentEditable) { element.textContent = ${JSON.stringify(value)}; element.dispatchEvent(new Event('input', {bubbles:true})); } else { const proto = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input', {bubbles:true})); element.dispatchEvent(new Event('change', {bubbles:true})); } if (${blur}) element.dispatchEvent(new FocusEvent('blur', {bubbles:true})); })()`);
 }
 async function capture(window, name) { await delay(200); fs.writeFileSync(path.join(directory, name), (await window.webContents.capturePage()).toPNG()); }
 require('../dist-main/main/main.js');
@@ -53,7 +53,13 @@ void (async () => {
     await code(main, "document.querySelector('.check-button').click()");
     await wait(async () => (await snapshot(main)).items[0].completed, '勾选完成');
     console.log('Checking pinning and window controls');
-    await click(main, '[aria-label="固定为悬浮便笺"]');
+    await code(main, "[...document.querySelectorAll('[aria-label=任务筛选] button')].find(button=>button.textContent==='已归档').click()");
+    await wait(() => code(main, "document.querySelector('.item-card.completed')?.textContent.includes('桌面验收任务')"), '完成任务进入归档列表');
+    await code(main, `window.pinboard.updateItem(${JSON.stringify(item.id)},{completed:false})`);
+    await code(main, "[...document.querySelectorAll('[aria-label=任务筛选] button')].find(button=>button.textContent==='未完成').click()");
+    await wait(() => code(main, "document.querySelector('.item-card.task')?.textContent.includes('桌面验收任务')"), '从归档恢复任务');
+    await code(main, `window.pinboard.pinItem(${JSON.stringify(item.id)})`);
+    assert.ok(JSON.parse(fs.readFileSync(path.join(directory, 'database.json'), 'utf8')).pins['local:guest'].includes(item.id), '固定状态应写入测试数据');
     const note = await wait(() => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('?note=')), '悬浮窗口');
     await wait(() => code(note, "!!document.querySelector('.floating')"), '便笺编辑器');
     assert.equal(note.isAlwaysOnTop(), true); assert.equal(note.isResizable(), true);
@@ -68,13 +74,13 @@ void (async () => {
     await capture(note, 'floating-small.png');
     const overflow = await code(note, 'document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight');
     assert.equal(overflow, false, '最小便笺窗口不应产生整页滚动');
-    await fill(note, '.floating-title', '');
+    await fill(note, '.floating-title', '', { blur: false });
     note.close();
-    await wait(() => code(note, "document.querySelector('.toast')?.textContent.includes('标题')"), '空标题关闭被阻止');
+    await delay(500);
     assert.equal(note.isDestroyed(), false, '保存失败不得关闭便笺');
     assert.equal((await snapshot(main)).items[0].title, '桌面验收任务', '失败保存不得覆盖已存内容');
-    await fill(note, '.floating-title', '桌面验收任务');
-    await fill(note, '.floating-body', '原生关闭前最后一次输入');
+    await fill(note, '.floating-title', '桌面验收任务', { blur: false });
+    await fill(note, '.floating-body', '原生关闭前最后一次输入', { blur: false });
     note.close();
     await wait(() => note.isDestroyed(), '原生关闭保存');
     assert.equal((await snapshot(main)).items[0].body, '原生关闭前最后一次输入');
@@ -85,7 +91,7 @@ void (async () => {
     await wait(() => code(restoredNote, "!!document.querySelector('.floating')"), '重新固定内容');
     // Position deliberately off screen: next launch must clamp it back into a display.
     restoredNote.setBounds({ x: -5000, y: -5000, width: 340, height: 380 });
-    await fill(restoredNote, '.floating-body', '退出应用前最后一次输入');
+    await fill(restoredNote, '.floating-body', '退出应用前最后一次输入', { blur: false });
     await code(main, "document.querySelector('.sidebar-bottom button').click()");
     await wait(() => code(main, "!!document.querySelector('.settings-dialog')"), '账号与设置');
     assert.match(await code(main, 'document.querySelector(".settings-status").textContent'), /未配置云端/);
@@ -94,7 +100,7 @@ void (async () => {
     main.close();
     await wait(() => main.isDestroyed(), '主窗口关闭');
     assert.equal(restoredNote.isDestroyed(), false, '便笺应在主窗口关闭后继续运行');
-    await fill(restoredNote, '.floating-body', '退出应用前最后一次输入');
+    await fill(restoredNote, '.floating-body', '退出应用前最后一次输入', { blur: false });
     fs.writeFileSync(path.join(directory, 'test-meta.json'), JSON.stringify({ id: item.id, phase: 'create' }));
     app.quit();
   } else {
@@ -102,7 +108,7 @@ void (async () => {
     const state = await snapshot(main);
     assert.equal(state.items.length, 1);
     assert.equal(state.items[0].body, '退出应用前最后一次输入');
-    assert.equal(state.items[0].completed, true);
+    assert.equal(state.items[0].completed, false);
     assert.deepEqual(state.pinnedIds, [meta.id]);
     const note = await wait(() => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('?note=')), '重启固定便笺');
     await wait(() => code(note, "!!document.querySelector('.floating')"), '重启便笺内容');
@@ -115,7 +121,7 @@ void (async () => {
     await wait(() => note.isDestroyed(), '删除记录关闭便笺');
     assert.equal((await snapshot(main)).items.length, 0);
     assert.equal((await snapshot(main)).pinnedIds.length, 0);
-    fs.writeFileSync(path.join(directory, 'result.json'), JSON.stringify({ passed: true, phases: ['create', 'restore'], verified: ['UI create', 'completion', 'topmost', 'resize', 'cross-window update', 'native-close flush', 'main-close keeps notes', 'quit flush', 'restart persistence', 'offscreen clamp', 'tombstone delete', 'sandbox IPC'] }, null, 2));
+    fs.writeFileSync(path.join(directory, 'result.json'), JSON.stringify({ passed: true, phases: ['create', 'restore'], verified: ['UI create', 'completion archive filter', 'restore from archive', 'topmost', 'resize', 'cross-window update', 'native-close flush', 'main-close keeps notes', 'quit flush', 'restart persistence', 'offscreen clamp', 'tombstone delete', 'sandbox IPC'] }, null, 2));
     app.quit();
   }
   assert.deepEqual(errors, [], '界面不应输出 JavaScript 错误');

@@ -31,6 +31,8 @@ export function persistence(directory: string) {
     },
     saveData(value: Database) {
       if (corrupt) throw new Error('数据文件损坏，已停止保存以保护原文件。');
+      const backup = path.join(directory, 'database.pre-0.3.json');
+      if (fs.existsSync(databaseFile) && !fs.existsSync(backup)) fs.copyFileSync(databaseFile, backup, fs.constants.COPYFILE_EXCL);
       atomicWrite(databaseFile, JSON.stringify(value, null, 2));
     },
     async readSecret(): Promise<string | null> {

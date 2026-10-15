@@ -1,6 +1,7 @@
 import type { ObsidianPreview, ObsidianResult } from './obsidian';
 export type ItemKind = 'task' | 'note';
 export type NoteColor = 'sage' | 'yellow' | 'blue' | 'rose';
+export interface TaskRecurrence { frequency: 'daily' | 'weekly' | 'monthly'; interval: number }
 export interface Item {
   id: string;
   ownerId: string | null;
@@ -8,6 +9,12 @@ export interface Item {
   title: string;
   body: string;
   dueDate: string | null;
+  tags?: string[];
+  dueTime?: string | null;
+  recurrence?: TaskRecurrence | null;
+  /** Generated occurrences reference the initial task that owns the schedule. */
+  seriesId?: string;
+  recurrenceIndex?: number;
   completed: boolean;
   color: NoteColor;
   createdAt: string;
@@ -20,9 +27,12 @@ export interface CreateItemInput {
   title: string;
   body?: string;
   dueDate?: string | null;
+  tags?: string[];
+  dueTime?: string | null;
+  recurrence?: TaskRecurrence | null;
   color?: NoteColor;
 }
-export type ItemPatch = Partial<Pick<Item, 'title' | 'body' | 'dueDate' | 'completed' | 'color'>>;
+export type ItemPatch = Partial<Pick<Item, 'title' | 'body' | 'dueDate' | 'dueTime' | 'tags' | 'recurrence' | 'completed' | 'color'>>;
 export interface CloudConfig { url: string; publicKey: string }
 export type SyncStatus = 'unconfigured' | 'signed-out' | 'syncing' | 'synced' | 'offline' | 'error';
 export interface SyncState {
@@ -52,6 +62,8 @@ export interface PinboardAPI {
   importObsidian(token: string): Promise<ObsidianResult>;
   syncObsidian(): Promise<ObsidianResult>;
   openMain(): Promise<void>;
+  getMainDisplayMode(): Promise<'window' | 'desktop'>;
+  setMainDisplayMode(mode: 'window' | 'desktop'): Promise<void>;
   windowControl(action: 'minimize' | 'close' | 'quit'): Promise<void>;
   getCloudConfig(): Promise<CloudConfig | null>;
   setCloudConfig(config: CloudConfig): Promise<void>;

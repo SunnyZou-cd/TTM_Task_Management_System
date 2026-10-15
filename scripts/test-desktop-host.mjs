@@ -1,0 +1,18 @@
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import path from 'node:path';
+const require = createRequire(import.meta.url);
+if (process.platform !== 'win32') throw Error('Native Explorer host test requires Windows.');
+const base = path.resolve('work');
+fs.mkdirSync(base, { recursive: true });
+const directory = fs.mkdtempSync(path.join(base, 'desktop-host-'));
+const env = { ...process.env, PINBOARD_NATIVE_TEST_DIR: directory };
+if (process.argv[2]) env.PINBOARD_NATIVE_PACKAGE_ROOT = path.resolve(process.argv[2]);
+delete env.ELECTRON_RUN_AS_NODE;
+const child = spawn(require('electron'), [path.resolve('scripts/test-desktop-host.cjs')], { env, stdio: 'inherit', windowsHide: true });
+const timer = setTimeout(() => child.kill(), 60000);
+const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+clearTimeout(timer);
+console.log(`Native desktop host evidence: ${path.join(directory, 'result.json')}`);
+if (code !== 0) throw Error(`Native desktop host test failed (${code}).`);
