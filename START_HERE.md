@@ -1,5 +1,7 @@
 # 项目接续入口
 
+当前开发规划见 [PROJECT_PLAN.md](PROJECT_PLAN.md)：Python 学业任务调度引擎、三策略实验及 Pinboard 集成。先按里程碑完成独立 CLI Demo。
+
 本项目作为中期项目继续开发。应用名 Pinboard，仓库名 TTM_Task_Management_System。
 
 ## 工作目录
