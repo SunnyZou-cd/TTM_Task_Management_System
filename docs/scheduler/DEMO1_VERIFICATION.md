@@ -1,5 +1,15 @@
 # Demo 1 验收记录
 
+## 2026-11-14：单文件补充验收
+
+根目录 `demo1.py` 包含完整可读Python源码和内置三案例；不依赖本地项目包或外部JSON。默认UTC展示，内置演示无需第三方包；自定义命名时区沿用系统数据/tzdata要求。
+
+Windows / Python 3.14.3 全套51项unittest通过（原44项、新增7项）。新增测试在项目work/的独立临时目录中只复制demo1.py，并使用`python -I -S -B demo1.py`运行：隔离PYTHONPATH、用户配置与site-packages，正常显示三个案例各三策略，并且默认运行不生成文件。
+
+另已验证：`--json`九份结果与模块版同快照（仅展示时区改UTC）逐项相等；筛选结果与重复输出一致；JSON文件/stdin的schedule/compare/validate完整往返；篡改revision退出3；非法选项、重复键与孤立代理字符退出2且stderr为JSON；构建脚本`--check`确认生成文件同步。全部结果保持独立约束校验。
+
+维护脚本`python_scheduler/scripts/build_single_file.py`从模块源码生成普通Python函数、dataclasses和嵌入示例，无运行时exec或编码载荷。正常生成会覆盖demo1.py，`--check`只读。以下2026-11-13记录保留作模块版初次交付证据。
+
 验收日期：2026-11-13（America/Chicago）。基线为 main / 6fdf649，本次新增独立 Python 模块，未改 Electron 源码。未发布稳定版。
 
 ## 实际环境与安装

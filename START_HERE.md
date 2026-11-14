@@ -1,6 +1,39 @@
 # 项目接续入口
 
-独立 Python CLI Demo 1 已实现并在 2026-11-13 完成自动验收，包含 EDF、Importance First、Risk-Aware、锁定重排与独立结果校验。运行步骤见 [python_scheduler/README.md](python_scheduler/README.md)，证据见 [DEMO1_VERIFICATION.md](docs/scheduler/DEMO1_VERIFICATION.md)。三策略正式实验及 Pinboard 集成按 [PROJECT_PLAN.md](PROJECT_PLAN.md) 后续推进。
+Python CLI Demo 1 的单文件入口已于2026-11-14通过验收。项目根目录中的 `demo1.py` 内置可行、超载、锁定重排三个案例，并对每个案例运行三种策略；默认 UTC，内置数据无需外部 JSON 或安装包。全套51项测试通过，包括复制文件后禁用第三方包的独立运行检查。快速运行步骤如下。
+
+## Python Demo 1：单文件快速运行
+
+在项目根目录 `C:\codex\TTM_Task_Management_System` 执行。运行只计算并显示建议计划，不连接或写入数据库。
+
+1. **检查 Python 版本。**
+
+   ```powershell
+   python --version
+   ```
+
+   **成功标志：** 显示 Python 3.11 或更新版本。
+
+2. **运行内置案例。**
+
+   ```powershell
+   python .\demo1.py
+   ```
+
+   **成功标志：** 终端显示三个内置案例，每个案例均有 EDF、importance、risk 三种策略结果。
+
+3. **选择 JSON 输出或筛选一个结果。**
+
+   ```powershell
+   python .\demo1.py --json
+   python .\demo1.py --example overloaded --strategy edf
+   ```
+
+   **成功标志：** 第一条输出机器可读 JSON；第二条只展示超载案例的 EDF 结果。
+
+复制根目录的 `demo1.py` 后，它可独立运行内置案例，不依赖外部 JSON 或包安装。默认时区为 UTC。Windows 上使用其他 IANA 展示时区需先安装 `tzdata`；安装会联网并给当前 Python 环境添加时区数据，命令为 `python -m pip install tzdata`。
+
+包版 CLI 的自定义输入方式（`schedule`、`compare`、`validate`）和分步说明见 [python_scheduler/README.md](python_scheduler/README.md)。三策略正式实验及 Pinboard 集成按 [PROJECT_PLAN.md](PROJECT_PLAN.md) 后续推进。
 
 本项目作为中期项目继续开发。应用名 Pinboard，仓库名 TTM_Task_Management_System。
 

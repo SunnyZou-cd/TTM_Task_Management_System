@@ -1,5 +1,44 @@
 # Python CLI Demo 1
 
+## 最快启动：单文件 Demo 1
+
+在项目根目录 `C:\codex\TTM_Task_Management_System` 使用 Python 3.11 或更新版本。单文件版内置可行、超载和锁定重排三个案例，每例运行 EDF、importance、risk 三种策略；默认使用 UTC。内置案例不读取外部 JSON，也不要求安装 Python 包。
+
+1. **检查 Python 版本。** 这一步只读取解释器版本，不修改文件。
+
+   ```powershell
+   python --version
+   ```
+
+   **成功标志：** 显示 Python 3.11 或更高版本。
+
+2. **运行内置演示。** 命令只计算并显示计划，不连接或写入数据库。
+
+   ```powershell
+   python .\demo1.py
+   ```
+
+   **成功标志：** 终端显示可行、超载和锁定重排案例各自的三策略结果。
+
+3. **按需输出 JSON 或筛选结果。** `--json` 输出机器可读 JSON；以下筛选命令只显示超载案例的 EDF 结果。
+
+   ```powershell
+   python .\demo1.py --json
+   python .\demo1.py --example overloaded --strategy edf
+   ```
+
+   **成功标志：** 第一条输出 JSON；第二条结果仅针对 `overloaded` 案例的 `edf` 策略。
+
+复制项目根目录的 `demo1.py` 后，文件可独立运行其内置案例，无需复制本目录下的 JSON 或安装包。默认时区为 UTC。Windows 上使用其他 IANA 展示时区需先安装 `tzdata`；安装会联网并给当前 Python 环境添加时区数据，命令为 `python -m pip install tzdata`。
+
+2026-11-14验收：单独复制文件并禁用所有第三方包后运行成功，九个策略结果与模块版一致；全套51项测试通过。单文件还保留 `python demo1.py schedule INPUT`、`compare INPUT` 和 `validate INPUT RESULT` 三个 JSON 子命令。
+
+维护时可运行 `python python_scheduler/scripts/build_single_file.py --check` 检查单文件是否与模块源码同步。去掉 `--check` 会重新生成并覆盖根目录的 `demo1.py`；若要修改单文件做个人试验，请另存副本。
+
+## 包版 CLI 与自定义输入
+
+下方说明的是基于本地包的 CLI，用于读取自定义 JSON 输入并调用 `schedule`、`compare`、`validate` 子命令；它与上面的单文件内置案例入口并行保留。
+
 这个命令行工具根据一份任务和可用时间快照生成计划。它不会连接数据库、改写任务完成状态或保存日历；输出是建议计划，不能当作任务已完成的证据。每次重排都从当前完整输入重新计算。保存结果前，调用方应先确认 `input_revision` 仍与当前输入一致。
 
 ## Windows PowerShell：从项目根目录开始
@@ -33,7 +72,7 @@
 
    **成功标志：** 3 项测试均显示 `ok`，最终显示 `OK`。
 
-   要运行全部44项测试（含480组三策略合成场景），把 `-p test_examples.py` 删除即可；测试临时文件只放在项目 `work/`。
+   要运行全部51项测试（含480组三策略合成场景和单文件独立运行检查），把 `-p test_examples.py` 删除即可；测试临时文件只放在项目 `work/`。
 
 4. **运行一个完整案例。** 这条命令从仓库根目录读取可行案例，生成 JSON 计划并保存到 `work\feasible-result.json`。
 
