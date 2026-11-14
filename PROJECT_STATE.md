@@ -1,4 +1,15 @@
-# 项目状态 · 2026-10-15
+# 项目状态 · 2026-11-13
+
+## Python 学业调度 CLI Demo 1
+
+- 已实现独立可安装 Python 包：严格 dataclasses 输入、UTC/IANA 时区、区间合并扣除、任务拆分与连续任务、now/截止约束、未排原因、锁定重排、独立输出校验和计划指标。
+- EDF、Importance First 和动态 Risk-Aware 共用一个分配器；CLI 支持 `schedule`、同输入 `compare`、`validate`、文件和 stdin/stdout JSON、明确退出码与原子输出文件。
+- 2026-11-13 Windows / Python 3.14.3 / tzdata 2026.6 的全新虚拟环境安装通过，命令行入口与 `python -m` 均通过。44 项 unittest 全通过，包含 160 份固定种子输入 × 3 策略的 480 组合法性和确定性检查；`pip check` 通过。
+- 三份合成案例实测：可行 150/150 分钟；超载 120/180 分钟，缺口60；重排 150/150 分钟并原样保留两块锁定（其中空白预留30分钟）。非法输入退出2，篡改结果退出3，正常 stdout 为可解析 JSON。
+- 运行指南：[python_scheduler/README.md](python_scheduler/README.md)；契约、计划和详细证据见 [docs/scheduler](docs/scheduler/DEMO1_VERIFICATION.md)。所有案例是合成数据，未连接真实应用数据库或云服务。
+- 本轮没有实现 UI、Electron 联动或正式大规模实验；没有发布稳定版。Python 3.11–3.13 和非 Windows 系统未实测，课程选题/AI使用/最终演示要求仍需课程方确认，不影响本次已授权 Demo 的实现。
+
+以下 Electron 0.3 状态保留为 2026-10-15 历史记录；本轮未重跑其测试。
 
 ## 0.3 预览版
 

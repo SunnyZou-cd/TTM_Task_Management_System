@@ -1,0 +1,37 @@
+{
+  "schema_version": "1",
+  "request_id": "demo-feasible-2026-11-13",
+  "input_revision": "demo-feasible-r1",
+  "now": "2026-11-13T09:00:00-06:00",
+  "timezone": "America/Chicago",
+  "horizon_end": "2026-11-13T12:00:00-06:00",
+  "tasks": [
+    {
+      "task_id": "read-chapter",
+      "title": "阅读课程章节",
+      "estimated_minutes": 90,
+      "remaining_minutes": 90,
+      "importance": 4,
+      "deadline": "2026-11-13T11:00:00-06:00",
+      "earliest_start": "2026-11-13T09:00:00-06:00",
+      "splittable": true
+    },
+    {
+      "task_id": "submit-notes",
+      "title": "整理并提交课堂笔记",
+      "estimated_minutes": 60,
+      "remaining_minutes": 60,
+      "importance": 3,
+      "deadline": "2026-11-13T12:00:00-06:00",
+      "earliest_start": "2026-11-13T09:00:00-06:00",
+      "splittable": true
+    }
+  ],
+  "availability": [
+    {"start": "2026-11-13T09:00:00-06:00", "end": "2026-11-13T12:00:00-06:00"}
+  ],
+  "busy_events": [],
+  "locked_blocks": [],
+  "strategy": "edf",
+  "parameters": {"min_block_minutes": 15, "max_block_minutes": 60}
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": "1",
+  "request_id": "demo-replan-2026-11-13",
+  "input_revision": "demo-replan-r1",
+  "now": "2026-11-13T14:00:00-06:00",
+  "timezone": "America/Chicago",
+  "horizon_end": "2026-11-13T18:00:00-06:00",
+  "tasks": [
+    {
+      "task_id": "write-draft",
+      "title": "撰写论文初稿",
+      "estimated_minutes": 90,
+      "remaining_minutes": 90,
+      "importance": 5,
+      "deadline": "2026-11-13T18:00:00-06:00",
+      "earliest_start": "2026-11-13T14:00:00-06:00",
+      "splittable": true
+    },
+    {
+      "task_id": "prepare-quiz",
+      "title": "准备小测",
+      "estimated_minutes": 60,
+      "remaining_minutes": 60,
+      "importance": 3,
+      "deadline": "2026-11-13T18:00:00-06:00",
+      "earliest_start": "2026-11-13T14:00:00-06:00",
+      "splittable": true
+    }
+  ],
+  "availability": [
+    {"start": "2026-11-13T14:00:00-06:00", "end": "2026-11-13T18:00:00-06:00"}
+  ],
+  "busy_events": [],
+  "locked_blocks": [
+    {
+      "locked_id": "keep-draft-session",
+      "task_id": "write-draft",
+      "start": "2026-11-13T15:00:00-06:00",
+      "end": "2026-11-13T15:30:00-06:00"
+    },
+    {
+      "locked_id": "reserved-appointment",
+      "task_id": null,
+      "start": "2026-11-13T16:00:00-06:00",
+      "end": "2026-11-13T16:30:00-06:00"
+    }
+  ],
+  "strategy": "importance",
+  "parameters": {"min_block_minutes": 15, "max_block_minutes": 60}
+}

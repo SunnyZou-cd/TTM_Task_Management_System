@@ -7,3 +7,7 @@ work/
 !.env.example
 *.log
 test-results/
+__pycache__/
+*.py[cod]
+*.egg-info/
+python_scheduler/build/
