@@ -1,5 +1,7 @@
 # Demo 1 实施计划
 
+这是2026-11-13算法与JSON基础的历史计划。2026-11-15用户明确要求实际可用软件，最新目标与验收见[DEMO1_PRODUCT_PLAN.md](DEMO1_PRODUCT_PLAN.md)。
+
 基准日期：2026-11-13（America/Chicago）。本轮交付是独立 Python CLI，不包含 UI、Electron 联动、正式实验报告或稳定版发布。原规划的旧日期不作为完成证据。
 
 ## 模块、责任与依赖

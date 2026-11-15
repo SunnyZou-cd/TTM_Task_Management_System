@@ -1,6 +1,6 @@
 # Intelligent Academic Workload Scheduler — 项目规划
 
-规划日期：2026-11-04。2026-11-13 更新：独立 Python CLI Demo 1 已实现并验收，三策略与轻量同输入比较已接入。以下日期保留为原规划，不表示按原日期交付；实际证据见 [DEMO1_VERIFICATION.md](docs/scheduler/DEMO1_VERIFICATION.md)。
+规划日期：2026-11-04。2026-11-15更新：Demo 1交付目标已修订为能实际管理任务的Python终端软件，默认个人菜单，包含完整录入、生成、锁定重排和持久化流程，已完成本轮验收。目标见[DEMO1_PRODUCT_PLAN.md](docs/scheduler/DEMO1_PRODUCT_PLAN.md)，证据见[DEMO1_PRODUCT_VERIFICATION.md](docs/scheduler/DEMO1_PRODUCT_VERIFICATION.md)。以下日期保留为原规划，不表示按原日期交付。
 
 ## 目标与依据
 
@@ -59,6 +59,10 @@ python_scheduler/
     validation.py      # 独立输出约束检查
     metrics.py
     cli.py
+    workspace.py      # 任务与计划生命周期、编辑事务
+    storage.py        # 存档、备份、原子保存与并发冲突
+    terminal.py       # 个人终端菜单与日期输入
+    application.py    # 默认交互/JSON工具/显式案例入口
   tests/
   examples/            # 合成演示数据
   experiments/         # 固定种子生成器、benchmark
@@ -101,7 +105,7 @@ Electron 接入阶段通过主进程 spawn Python CLI，使用 stdin/stdout JSON
 
 ## 已交付与后续第一项任务
 
-2026-11-13 完成 Demo 1：models、availability、三策略共享引擎、独立校验、指标、安装与 JSON CLI，以及可行、超载、锁定重排案例。44 项自动测试和干净环境安装验收通过；没有把计划指标记作学习完成。锁定块的剩余分钟计数、短尾回填和展示时区边界以 [CONTRACT.md](docs/scheduler/CONTRACT.md) 为准。
+2026-11-13/14完成调度内核、JSON工具和单文件预设案例基础。2026-11-15补齐实际软件：通过菜单管理个人任务和时间、选择三策略、生成查看、锁定重排、保存/加载/另存和退出保护；81项自动测试、独立实际操作进程及干净安装通过。当前用户流程与存档规则以[WORKSPACE_CONTRACT.md](docs/scheduler/WORKSPACE_CONTRACT.md)为准；原调度规则仍见[CONTRACT.md](docs/scheduler/CONTRACT.md)。
 
 下一阶段是按上述协议实现固定种子实验生成器、冻结评估配置并运行正式比较；Electron 联动和 UI 单列后续工作。课程对 Python 版本、AI 辅助使用、演示形式及具体选题批准仍待核对。本轮用户已明确授权独立 Demo 实现，不等待这些信息才开发。
 

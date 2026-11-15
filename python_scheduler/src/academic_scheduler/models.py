@@ -1,7 +1,7 @@
 """Strict, immutable models for the standalone scheduler snapshot API."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone as datetime_timezone
+from datetime import datetime, timezone as datetime_timezone, tzinfo
 import re
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -9,6 +9,18 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 class InputError(ValueError):
     """A malformed snapshot or saved result, with a JSON field path."""
+
+
+def resolve_timezone(name: str) -> tzinfo:
+    """Keep the default UTC workspace usable without optional IANA data."""
+    if name == "UTC":
+        return datetime_timezone.utc
+    if not isinstance(name, str) or not name or name.strip() != name:
+        raise InputError("timezone: must be a valid IANA timezone name")
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise InputError("timezone: 时区无效或缺少时区数据；请核对 IANA 名称，必要时运行 python -m pip install tzdata") from exc
 
 
 @dataclass(frozen=True)
@@ -146,7 +158,7 @@ def parse_datetime(value: Any, path: str) -> datetime:
         raise InputError(f"{path}: invalid timestamp") from exc
 
 
-def _display_time(value: datetime, zone: ZoneInfo, path: str) -> str:
+def _display_time(value: datetime, zone: tzinfo, path: str) -> str:
     try:
         local = value.astimezone(zone)
     except (ValueError, OverflowError) as exc:
@@ -190,9 +202,9 @@ def parse_request(value: dict) -> ScheduleRequest:
         _error("$.horizon_end", "must be after now")
     zone = _string(value["timezone"], "$.timezone")
     try:
-        display_zone = ZoneInfo(zone)
-    except (ZoneInfoNotFoundError, ValueError) as exc:
-        raise InputError("$.timezone: must be a valid IANA timezone") from exc
+        display_zone = resolve_timezone(zone)
+    except InputError as exc:
+        raise InputError(f"$.timezone: {exc}") from exc
     tasks = tuple(_task(v, f"$.tasks[{i}]") for i, v in enumerate(_array(value["tasks"], "$.tasks")))
     task_map = {task.task_id: task for task in tasks}
     if len(task_map) != len(tasks):
@@ -276,7 +288,7 @@ def parse_result(value: dict) -> ScheduleResult:
 
 
 def result_to_dict(result: ScheduleResult, timezone: str) -> dict:
-    zone = ZoneInfo(timezone)
+    zone = resolve_timezone(timezone)
     def timestamp(value: datetime) -> str:
         return _display_time(value, zone, "$.blocks")
     return {

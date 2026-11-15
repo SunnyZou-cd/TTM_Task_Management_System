@@ -1,5 +1,7 @@
 # Demo 1 验收记录
 
+本文件保留2026-11-13/14的算法与预设案例基础记录。2026-11-15实际交互软件的完整流程证据见[DEMO1_PRODUCT_VERIFICATION.md](DEMO1_PRODUCT_VERIFICATION.md)。
+
 ## 2026-11-14：单文件补充验收
 
 根目录 `demo1.py` 包含完整可读Python源码和内置三案例；不依赖本地项目包或外部JSON。默认UTC展示，内置演示无需第三方包；自定义命名时区沿用系统数据/tzdata要求。

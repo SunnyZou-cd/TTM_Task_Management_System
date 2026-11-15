@@ -3,6 +3,7 @@
 from dataclasses import replace
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 import shutil
 import subprocess
@@ -43,13 +44,80 @@ class SingleFileTests(unittest.TestCase):
         return raw
 
     def test_copied_file_runs_without_package_assets_or_site_packages(self):
-        process = self.invoke()
+        process = self.invoke("--demo")
         self.assertSuccess(process)
         self.assertIn("演示完成", process.stdout)
         self.assertEqual(process.stdout.count("校验通过"), 9)
         self.assertIn("未排 60 分钟", process.stdout)
         self.assertIn("锁定 keep-draft-session", process.stdout)
         self.assertEqual([path.name for path in self.directory.iterdir()], ["demo1.py"])
+
+    def test_default_is_empty_interactive_software_and_does_not_auto_save(self):
+        process = self.invoke(data="1\n1\n0\n0\n")
+        self.assertSuccess(process)
+        self.assertIn("1任务管理", process.stdout)
+        self.assertIn("暂无任务", process.stdout)
+        self.assertNotIn("合成案例演示", process.stdout)
+        self.assertEqual([path.name for path in self.directory.iterdir()], ["demo1.py"])
+
+    def test_real_personal_workflow_save_restart_progress_and_completion(self):
+        archive = self.directory / "personal.json"
+        saved_as = self.directory / "saved-as.json"
+        answers = [
+            "2", "1", "UTC", "2030-01-01 09:00", "2030-01-01 12:00",
+            "3", "2030-01-01 09:00", "2030-01-01 12:00",
+            "5", "2030-01-01 10:00", "2030-01-01 10:30", "0",
+            "1", "2", "用户录入的阅读任务", "90", "90", "5", "2030-01-01 12:00", "2030-01-01 09:00", "y",
+            "2", "不可拆任务", "30", "30", "3", "2030-01-01 12:00", "2030-01-01 09:00", "n", "0",
+            "3", "2", "15", "60", "4",
+            "6", "2", "1", "2", "2", "0",
+            "1", "3", "1", "用户修改后的阅读任务", "", "", "", "", "", "", "0",
+            "4", "7", "8",
+            "1", "5", "2", "15", "0", "4", "8", "10", str(saved_as), "0",
+        ]
+        process = self.invoke("--data", archive, data="\n".join(answers) + "\n")
+        self.assertSuccess(process)
+        self.assertNotIn("操作失败", process.stdout)
+        document = json.loads(archive.read_text(encoding="utf-8"))
+        snapshot, result = document["request"], document["result"]
+        self.assertEqual(json.loads(saved_as.read_text(encoding="utf-8")), document)
+        self.assertEqual([t["remaining_minutes"] for t in snapshot["tasks"]], [90, 15])
+        self.assertEqual(snapshot["tasks"][0]["title"], "用户修改后的阅读任务")
+        self.assertEqual(snapshot["strategy"], "importance")
+        locks = snapshot["locked_blocks"]
+        self.assertEqual(len(locks), 2)
+        self.assertEqual({b["locked_id"] for b in result["blocks"] if b["source"] == "locked"}, {b["locked_id"] for b in locks})
+        self.assertEqual(result["metrics"]["scheduled_minutes"], 105)
+        self.assertTrue(all(datetime.fromisoformat(b["start"]) >= datetime.fromisoformat(snapshot["now"]) for b in result["blocks"]))
+        backup = json.loads(Path(str(archive) + ".bak").read_text(encoding="utf-8"))
+        self.assertEqual(backup["request"]["tasks"][1]["remaining_minutes"], 30)
+        restarted = self.invoke("--data", archive, data="5\n0\n")
+        self.assertSuccess(restarted)
+        self.assertIn("用户修改后的阅读任务", restarted.stdout)
+        self.assertIn("已锁定", restarted.stdout)
+        # Completion/deletion are explicit user operations, never inferred
+        # from having generated or saved a plan.
+        final = self.invoke("--data", archive, data="1\n6\n1\ny\n4\n2\ny\n0\n4\n8\n0\n")
+        self.assertSuccess(final)
+        self.assertNotIn("操作失败", final.stdout)
+        document = json.loads(archive.read_text(encoding="utf-8"))
+        self.assertEqual(len(document["request"]["tasks"]), 1)
+        self.assertEqual(document["request"]["tasks"][0]["status"], "completed")
+        self.assertEqual(document["request"]["locked_blocks"], [])
+        self.assertEqual(document["result"]["metrics"]["eligible_tasks"], 0)
+
+    def test_interactive_unsaved_eof_and_corrupt_archive_are_protected(self):
+        archive = self.directory / "personal.json"
+        answers = ["1", "2", "尚未保存的任务", "30", "30", "3", "2030-01-01 12:00", "2030-01-01 09:00", "y", "0"]
+        process = self.invoke("--data", archive, data="\n".join(answers) + "\n")
+        self.assertEqual(process.returncode, 1)
+        self.assertIn("更改尚未保存", process.stdout)
+        self.assertFalse(archive.exists())
+        archive.write_bytes(b"broken personal file")
+        process = self.invoke("--data", archive, data="0\n")
+        self.assertEqual(process.returncode, 1)
+        self.assertIn("无法加载存档", process.stdout)
+        self.assertEqual(archive.read_bytes(), b"broken personal file")
 
     def test_json_all_cases_and_strategies_match_modular_implementation(self):
         process = self.invoke("--json")
