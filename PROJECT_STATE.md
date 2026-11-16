@@ -1,5 +1,13 @@
 # 项目状态 · 2026-11-16
 
+## 日历工作区改版
+
+- 默认窗口已改为日期导航、任务侧栏和周/日日历，独立Time页面及原三页大表单已移除。任务仅需主要字段，其他配置按需展开。
+- 按用户确认使用规划窗口内全部日历空白排程，忙碌事件直接在网格增删改；自动计划、锁定和忙碌使用不同色块，生成后定位首块。
+- 默认English及会话内简体中文切换保留；File菜单提供原存档功能。旧文件不自动迁移，保存继续备份并检查冲突。
+- Windows/Python 3.14.3/Tk 8.6全套98项测试通过，含12项真实Tk检查；双语、周/日和980×660窗口截图已查看。课程目录作为参考，未声称所有课程模块都已覆盖。
+- 最新证据：[CALENDAR_REDESIGN_VERIFICATION.md](docs/scheduler/CALENDAR_REDESIGN_VERIFICATION.md)；课程对应：[COURSE_ALIGNMENT.md](docs/scheduler/COURSE_ALIGNMENT.md)。以下旧GUI布局记录保留作历史。
+
 ## Tkinter GUI 更新 · 2026-11-16
 
 - Demo 1 已切换为Tkinter图形界面默认入口：`python demo1.py` 打开窗口，`--terminal` 保留终端菜单，`--demo` 显式运行合成案例。

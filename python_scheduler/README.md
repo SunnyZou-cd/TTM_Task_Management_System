@@ -1,63 +1,42 @@
-# Demo 1 · Tkinter 图形界面
+# Demo 1 · 日历工作区
 
-Demo 1 默认入口现为 Tkinter 图形界面：从项目根目录运行 `python .\demo1.py` 打开窗口；`--terminal` 保留原终端菜单，`--demo` 显式查看合成演示。GUI集成验收已完成，88项测试通过；实际范围及证据见 [GUI 验收记录](../docs/scheduler/DEMO1_GUI_VERIFICATION.md)。
+使用Python 3.11+，在项目根目录执行 `python demo1.py` 打开窗口；选择Save时才写入本地存档。默认English，顶部可切换简体中文，选择仅作用于本次会话。
 
-## 启动与语言
+## 常用操作
 
-1. **确认 Python 版本。** GUI 需要 Python 3.11 或更新版本及可用的 Tk 桌面组件。
+1. **新建任务：** 点击左侧Create task，填写名称、总分钟和截止时间，再保存。剩余分钟默认等于总分钟，其他字段在Advanced options里。
 
-   ```powershell
-   python --version
-   ```
+   **成功标志：** 左侧任务列表出现新任务。双击任务可编辑，也可记录进度、完成或删除。
 
-   **成功标志：** 显示 Python 3.11 或更新版本。
+2. **直接管理日历：** 顶部Today回到今天，左右箭头切换日期，Week/Day切换周与日。点击网格空白建立忙碌时段，点击已有忙碌块可编辑或删除。
 
-2. **打开工作区。** 在项目根目录运行：
+   **成功标志：** 忙碌时段显示在日历中。浏览日期不会修改任务或规划范围。
 
-   ```powershell
-   python .\demo1.py
-   ```
+3. **生成计划：** 点击Generate / replan。无需填写可用时间，也没有独立Time页面。程序使用规划范围内的空白，扣除忙碌和锁定时段。
 
-   **预期成功标志：** 出现 Demo 1 主窗口，而不是自动输出案例。首次使用为空白工作区；如默认存档已存在，则读取该存档。默认只读写本地 `work\demo1-data\workspace.json`，不访问数据库或外部账户。
+   **成功标志：** 自动安排显示为日历色块，左侧摘要显示未排分钟与原因。全部空白包含夜间；不希望排程的时间请标为忙碌。安排不等于学习完成。
 
-界面默认语言为 English（英文），可通过 `Language / 语言` 选择 `English` 或 `简体中文`。本文按钮使用英文显示名称并附中文解释。语言选择按当前窗口会话描述，不假定它会保存到下次启动。
+4. **查看与锁定：** 点击计划块查看详情并锁定或解锁。修改任务后可重新生成，锁定块保留；已开始的锁定块需先解锁并核对真实进度。
 
-## 建立并运行计划
+   **成功标志：** 锁定块用不同颜色和文字标识，重排后仍在原时段。
 
-1. **新增任务。** 打开 `Tasks`（任务）页，在 `Task details`（任务信息）填写 `Title`（名称）、`Total minutes`（总分钟）、`Remaining minutes`（剩余分钟）、`Priority 1–5`（重要性）、`Earliest start`（最早开始）、`Deadline`（截止时间）和 `Allow splitting`（允许拆分），点击 `Add task`（新增任务）。选中任务后可用 `Update selected task`（保存选中任务修改）、`Record remaining`（记录剩余分钟）、`Mark complete`（标记完成）或 `Delete task`（删除任务）；完成和删除会先要求确认。
+5. **低频设置：** Planning settings内调整规划范围、时区、策略与块长，并比较三策略。默认UTC；本地时间支持YYYY-MM-DD HH:MM，DST歧义需明确偏移。
 
-   **成功标志：** 任务列表显示刚新增的任务和对应字段。计划生成不会自动减少剩余分钟或标记完成。
+   **成功标志：** 设置成功后旧计划失效，再生成使用新设置。若Windows缺少非UTC时区数据，安装tzdata会联网并修改当前Python环境。
 
-2. **设置时间。** 打开 `Time`（时间）页，在 `Planning window and time zone`（规划窗口与时区）填写 `IANA time zone`（IANA 时区）、`Start`（开始）和 `End`（结束），点击 `Apply window`（应用窗口）。添加时段后，点击 `Add availability`（添加可用时段）或 `Add busy time`（添加忙碌时段）；选中时段后点击 `Remove selected interval`（删除选中时段）。默认时区为 UTC；本地时间格式为 `YYYY-MM-DD HH:MM`。
+6. **保存和恢复：** File菜单提供Save、Save as、Open workspace与Reload。默认路径work/demo1-data/workspace.json。已存在存档覆盖前生成.bak；冲突时可另存为新文件。
 
-   **成功标志：** 窗口和时段列表显示已保存的值。夏令时不存在的时间会被拒绝；回拨时重复的本地时间需要明确偏移。Windows 使用非 UTC 的 IANA 时区时，可能需要安装 `tzdata`：`python -m pip install tzdata`（会联网并修改当前 Python 环境）。
+   **成功标志：** 保存后未保存标记清除，重新打开同一路径恢复数据。未提交表单和未保存更改在关闭时有提示。
 
-3. **设置策略并生成计划。** 打开 `Plan`（计划）页，在 `Scheduling settings`（调度设置）选择策略 `edf`、`importance` 或 `risk`，填写 `Minimum block (min)`（最短块）和 `Maximum block (min)`（最长块），点击 `Apply settings`（应用设置）；再点击 `Generate / replan`（生成/重新规划）。
+本轮保留原JSON存档格式。旧存档加载时不自动改写；使用新日历规则重新生成并保存后，可用时间字段更新为当前规划范围，旧版本由.bak保留。终端和JSON工具仍沿用原输入契约。
 
-   **成功标志：** 计划视图列出任务、时间块、未排分钟和原因。容量缺口会显示在结果中；计划是安排建议，不表示实际完成。
+## 其他入口
 
-4. **查看或比较。** 在 `Plan`（计划）页查看当前计划；点击 `Compare strategies`（比较三种策略）在相同工作区输入下查看三个结果。
+- `python demo1.py --terminal`：原终端菜单。
+- `python demo1.py --demo`：合成算法案例。
+- `python demo1.py --data PATH`：指定个人存档。
 
-   **成功标志：** 计划视图呈现块时间和任务标题；比较视图提供 EDF、Importance First、Risk-Aware 的并列结果，且不会改变当前策略或计划。
-
-5. **锁定与重排。** 在 `Plan`（计划）页选中尚未开始的计划块，点击 `Lock selected block`（锁定选中计划块）；在锁定列表选中已锁定块后点击 `Unlock selected locked block`（解锁选中锁定块）。任务或时间编辑会使旧计划失效，应重新生成后再锁定。已开始的锁定块需先解除，再根据实际进度更新剩余分钟；不能将锁定或安排当成已完成。
-
-   **成功标志：** 后续重排仍保留锁定块，并重新安排其余工作。
-
-6. **保存、打开、另存、重新加载。** 顶部的 `Save`（保存）写入默认存档 `work\demo1-data\workspace.json`；`Save as`（另存为）使用新路径；`Open workspace`（打开存档）选择已有文件；`Reload`（重新加载）从当前路径读取。关闭窗口或加载时遇到未保存更改，应选择保存、放弃或取消。
-
-   **成功标志：** 保存后未保存状态清除；重启后任务、设置和计划可从同一存档恢复。覆盖存档会保留 `.bak` 备份；检测到并发冲突或损坏存档时，不应静默覆盖。
-
-### 保留入口
-
-```powershell
-python .\demo1.py --terminal
-python .\demo1.py --demo
-```
-
-`--terminal` 打开原终端菜单；`--demo` 只运行可行、超载和锁定重排合成案例，案例结果不是个人任务或完成记录。自定义 JSON 的包版 `schedule`、`compare`、`validate` 命令仍保留，见下节。
-
-GUI整体计划见 [DEMO1_GUI_PLAN.md](../docs/scheduler/DEMO1_GUI_PLAN.md)，验收记录见 [DEMO1_GUI_VERIFICATION.md](../docs/scheduler/DEMO1_GUI_VERIFICATION.md)。
+改版计划见[CALENDAR_REDESIGN_PLAN.md](../docs/scheduler/CALENDAR_REDESIGN_PLAN.md)，课程对应见[COURSE_ALIGNMENT.md](../docs/scheduler/COURSE_ALIGNMENT.md)。
 
 ## 包版 CLI 与自定义输入
 

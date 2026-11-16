@@ -108,4 +108,118 @@ class GUITests(unittest.TestCase):
         self.assertEqual([x["locked_id"] for x in self.app.workspace.snapshot["locked_blocks"]], [locks[0]["locked_id"]])
 
 
+    def _button(self, parent, text):
+        for child in parent.winfo_children():
+            try:
+                if child.cget("text") == text: return child
+            except tk.TclError: pass
+            found = self._button(child, text)
+            if found is not None: return found
+        return None
+
+    def test_calendar_navigation_is_view_only_and_no_notebook(self):
+        from tkinter import ttk
+        before = self.app.workspace.to_document()
+        self.assertFalse(any(isinstance(child, ttk.Notebook) for child in self.root.winfo_children()))
+        self.assertEqual(len(self.app._visible_dates()), 7)
+        date = self.app.view_date
+        self.app.navigate(1)
+        self.assertEqual(self.app.view_date, date + timedelta(days=7))
+        self.app.view_mode.set("Day"); self.app.draw_calendar()
+        self.assertEqual(len(self.app._visible_dates()), 1)
+        self.app.navigate(-1)
+        self.assertEqual(self.app.workspace.to_document(), before)
+        self.assertFalse(self.app.dirty)
+
+    def test_focused_task_dialog_defaults_and_language_survive(self):
+        self.app.task_dialog(); self.root.update()
+        dialog = self.app._dialog
+        self.assertEqual(self.app.task_vars["importance"].get(), "3")
+        self.assertTrue(self.app.splittable.get())
+        self.app.task_vars["estimated_minutes"].set("75")
+        self.assertEqual(self.app.task_vars["remaining_minutes"].get(), "75")
+        self.app.task_vars["title"].set("任务原文 / Original")
+        self.app.language.set("简体中文"); self.app.change_language()
+        self.app.language.set("English"); self.app.change_language()
+        self.assertEqual(self.app.task_vars["title"].get(), "任务原文 / Original")
+        self.assertIsNotNone(self._button(dialog, "Advanced options"))
+        self._button(dialog, "Save").invoke(); self.root.update()
+        self.assertFalse(dialog.winfo_exists())
+        task = self.app.workspace.snapshot["tasks"][0]
+        self.assertEqual(task["remaining_minutes"], 75)
+        self.assertEqual(task["title"], "任务原文 / Original")
+        self.assertEqual(self.app.task_tree.heading("title", "text"), "Tasks")
+
+    def test_calendar_busy_create_edit_and_invalid_edit_is_atomic(self):
+        start = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(days=2)
+        self.app.busy_dialog(start=start); self.root.update()
+        self._button(self.app._dialog, "Save").invoke(); self.root.update()
+        self.assertEqual(len(self.app.workspace.snapshot["busy_events"]), 1)
+        self.app.event_dialog("busy", 0); self.root.update()
+        before = self.app.workspace.to_document()
+        self.app.interval_end.set((start-timedelta(hours=1)).isoformat(timespec="minutes"))
+        with patch("academic_scheduler.gui.messagebox.showerror"):
+            self._button(self.app._dialog, "Save").invoke()
+        self.assertEqual(self.app.workspace.to_document(), before)
+        self.app.interval_end.set((start+timedelta(hours=2)).isoformat(timespec="minutes"))
+        self._button(self.app._dialog, "Save").invoke(); self.root.update()
+        self.assertEqual(len(self.app.workspace.snapshot["busy_events"]), 1)
+        self.assertTrue(any(kind == "busy" for kind,index in self.app._calendar_items.values()))
+        self.app.event_dialog("busy",0); self.root.update()
+        self._button(self.app._dialog,"Delete").invoke()
+        self.assertEqual(self.app.workspace.snapshot["busy_events"], [])
+
+    def test_generate_uses_free_slots_and_focuses_first_block(self):
+        start = (datetime.now(timezone.utc)+timedelta(days=8)).replace(hour=10,minute=0,second=0,microsecond=0)
+        end = start + timedelta(hours=3)
+        a,b = start.isoformat(timespec="minutes"),end.isoformat(timespec="minutes")
+        self.app._perform(self.app.workspace.set_window,a,b,"UTC")
+        self.app._perform(self.app.workspace.add_task,title="Read",estimated_minutes=60,remaining_minutes=60,importance=3,earliest_start=a,deadline=b,splittable=True)
+        self.assertEqual(self.app.workspace.snapshot["availability"], [])
+        self.app.generate(); self.root.update()
+        self.assertEqual(self.app.workspace.result["metrics"]["scheduled_minutes"],60)
+        self.assertEqual(self.app.view_date,start.date())
+        self.assertTrue(any(kind=="block" for kind,index in self.app._calendar_items.values()))
+        self.app.event_dialog("block",0); self.root.update()
+        self._button(self.app._dialog,"Lock time").invoke(); self.root.update()
+        self.assertEqual(len(self.app.workspace.snapshot["locked_blocks"]),1)
+        self.app.event_dialog("block",0); self.root.update()
+        self._button(self.app._dialog,"Unlock").invoke()
+        self.assertEqual(self.app.workspace.snapshot["locked_blocks"],[])
+
+    def test_settings_invalid_values_leave_workspace_unchanged(self):
+        self.app.settings_dialog(); self.root.update()
+        before = self.app.workspace.to_document()
+        self.app.strategy_var.set("risk"); self.app.min_var.set("-1")
+        with patch("academic_scheduler.gui.messagebox.showerror"):
+            self._button(self.app._dialog,"Apply settings").invoke()
+        self.assertEqual(self.app.workspace.to_document(),before)
+        self._button(self.app._dialog,"Cancel").invoke()
+        self.assertFalse(self.app._has_drafts())
+
+
+    def test_settings_unchanged_apply_preserves_plan_and_dirty(self):
+        self.app.generate(); self.app.dirty=False
+        before=self.app.workspace.to_document()
+        self.app.settings_dialog(); self.root.update()
+        self._button(self.app._dialog,"Apply settings").invoke()
+        self.assertEqual(self.app.workspace.to_document(),before)
+        self.assertFalse(self.app.dirty)
+
+    def test_calendar_click_rejects_dst_gap_and_fold(self):
+        from datetime import date
+        from types import SimpleNamespace
+        self.app._perform(self.app.workspace.set_window,"2027-01-01T00:00-06:00","2028-01-01T00:00-06:00","America/Chicago")
+        self.app.view_mode.set("Day")
+        for day,hour in ((date(2027,3,14),2.5),(date(2027,11,7),1.5)):
+            self.app.view_date=day; self.app.draw_calendar(); self.root.update()
+            gutter,col,pixels,dates=self.app._calendar_geometry
+            self.app.canvas.yview_moveto(0)
+            event=SimpleNamespace(x=gutter+20,y=hour*pixels-self.app.canvas.canvasy(0))
+            with patch("academic_scheduler.gui.messagebox.showerror") as error, patch.object(self.app,"busy_dialog") as busy:
+                self.app.calendar_click(event)
+            self.assertTrue(error.called)
+            self.assertFalse(busy.called)
+
+
 if __name__ == "__main__": unittest.main()

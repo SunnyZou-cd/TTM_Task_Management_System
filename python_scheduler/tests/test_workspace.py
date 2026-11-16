@@ -27,6 +27,39 @@ def configured(minutes=150):
 
 
 class WorkspaceTests(unittest.TestCase):
+    def test_calendar_schedules_without_manual_availability_and_excludes_busy(self):
+        workspace, _ = configured(90)
+        workspace.remove_interval("availability", 0)
+        workspace.add_interval("busy_events", at(0), at(60))
+        result = workspace.generate_calendar(now=NOW)
+        self.assertEqual(result["metrics"]["scheduled_minutes"], 90)
+        self.assertGreaterEqual(parse_datetime(result["blocks"][0]["start"], "start"), NOW + timedelta(minutes=60))
+        self.assertEqual(workspace.snapshot["tasks"][0]["remaining_minutes"], 90)
+
+    def test_calendar_comparison_is_read_only_and_replanning_preserves_locks(self):
+        workspace, _ = configured(150)
+        workspace.generate_calendar(now=NOW)
+        workspace.lock_block(1, now=NOW)
+        locked = deepcopy(workspace.snapshot["locked_blocks"])
+        before = workspace.to_document()
+        self.assertEqual(len(workspace.compare_calendar(now=NOW)), 3)
+        self.assertEqual(workspace.to_document(), before)
+        result = workspace.generate_calendar(now=NOW)
+        self.assertEqual(workspace.snapshot["locked_blocks"], locked)
+        self.assertEqual(result["metrics"]["scheduled_minutes"], 150)
+
+    def test_calendar_event_edit_failure_keeps_original_event_and_plan(self):
+        workspace, _ = configured()
+        workspace.add_interval("busy_events", at(0), at(30))
+        workspace.generate_calendar(now=NOW)
+        before = workspace.to_document()
+        with self.assertRaises(WorkspaceError):
+            workspace.update_interval("busy_events", 0, at(60), at(30))
+        self.assertEqual(workspace.to_document(), before)
+        workspace.update_interval("busy_events", 0, at(30), at(60))
+        self.assertIsNone(workspace.result)
+        self.assertEqual(workspace.snapshot["busy_events"][0], {"start": at(30), "end": at(60)})
+
     def test_new_is_empty_and_rounds_up_clock(self):
         workspace = Workspace.new(NOW + timedelta(seconds=1))
         self.assertEqual(parse_datetime(workspace.snapshot["now"], "now"), NOW + timedelta(minutes=1))

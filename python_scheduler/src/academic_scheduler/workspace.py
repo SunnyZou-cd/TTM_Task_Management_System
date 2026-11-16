@@ -153,6 +153,15 @@ class Workspace:
             del request[kind][index]
         self._edit(remove)
 
+    def update_interval(self, kind: str, index: int, start: str, end: str) -> None:
+        """Edit a calendar event atomically, preserving it on invalid input."""
+        self._interval_kind(kind)
+        def update(request):
+            if type(index) is not int or not 0 <= index < len(request[kind]):
+                raise WorkspaceError("时段序号无效；请重新查看时段列表。")
+            request[kind][index] = {"start": start, "end": end}
+        self._edit(update)
+
     def _planning_snapshot(self, now: datetime | None) -> dict:
         candidate = self.snapshot
         current = max(parse_datetime(candidate["now"], "now"), _ceil_minute(now))
@@ -184,6 +193,27 @@ class Workspace:
 
     def compare(self, *, now: datetime | None = None) -> list[dict]:
         candidate = self._planning_snapshot(now)
+        results = []
+        for strategy in ("edf", "importance", "risk"):
+            candidate["strategy"] = strategy
+            results.append(self._run(candidate))
+        return results
+
+    def _calendar_snapshot(self, now: datetime | None) -> dict:
+        candidate = self._planning_snapshot(now)
+        candidate["availability"] = [{"start": candidate["now"], "end": candidate["horizon_end"]}]
+        return candidate
+
+    def generate_calendar(self, *, now: datetime | None = None) -> dict:
+        """Plan in all free calendar slots; busy events and locks still apply."""
+        candidate = self._calendar_snapshot(now)
+        candidate["input_revision"] = str(uuid4())
+        result = self._run(candidate)
+        self._request, self._result = candidate, result
+        return self.result
+
+    def compare_calendar(self, *, now: datetime | None = None) -> list[dict]:
+        candidate = self._calendar_snapshot(now)
         results = []
         for strategy in ("edf", "importance", "risk"):
             candidate["strategy"] = strategy

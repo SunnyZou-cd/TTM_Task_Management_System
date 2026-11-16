@@ -80,13 +80,14 @@ def automatic_root(*args, **kwargs):
                 for child in parent.winfo_children():
                     yield child
                     yield from widgets(child)
-            notebook = next(w for w in widgets(root) if isinstance(w, ttk.Notebook))
-            assert [notebook.tab(tab, "text") for tab in notebook.tabs()] == ["Tasks", "Time", "Plan"]
+            assert any(isinstance(w, tk.Canvas) for w in widgets(root))
+            assert not any(isinstance(w, ttk.Notebook) for w in widgets(root))
+            english_title = root.title()
             selector = next(w for w in widgets(root) if isinstance(w, ttk.Combobox) and tuple(w["values"]) == ("English", "简体中文"))
             selector.set("简体中文")
             selector.event_generate("<<ComboboxSelected>>")
             root.update_idletasks()
-            assert [notebook.tab(tab, "text") for tab in notebook.tabs()] == ["任务", "时间", "计划"]
+            assert root.title() != english_title
             languages.append(True)
         finally:
             root.destroy()

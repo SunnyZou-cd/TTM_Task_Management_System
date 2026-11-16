@@ -1,43 +1,18 @@
 # 项目接续入口
 
-Python Demo 1 已加入Tkinter图形界面，88项测试通过。 `python .\demo1.py` 默认打开图形界面，`--terminal` 保留原终端菜单，`--demo` 显式运行案例。界面默认 English，并可切换简体中文。既有终端工作区验收不代表 GUI 验收；GUI 实测状态见[GUI验收记录](docs/scheduler/DEMO1_GUI_VERIFICATION.md)。
+Demo 1 已改为以日历为中心的工作区，移除独立Time页面。默认英文，可切换简体中文。按用户确认使用日历空白安排，并直接管理忙碌事件。98项测试与可见窗口检查通过，证据见[日历验收](docs/scheduler/CALENDAR_REDESIGN_VERIFICATION.md)。
 
-## Python Demo 1：图形界面使用流程
+启动目的：打开本地窗口；只有选择保存才写入个人存档。在项目根目录执行：
 
-以下指南适用于 Tkinter 窗口。控件名称按 English 显示，并附中文解释。使用 Python 3.11 或更新版本，无需编辑 JSON 或安装项目包。
+```powershell
+python .\demo1.py
+```
 
-1. **检查版本并启动窗口。**
+成功标志：窗口显示日期导航、左侧任务栏、中央周/日日历。点击Create task新增任务，点击日历空白添加忙碌时段，点击Generate生成安排。File菜单保存/加载；Planning settings收纳低频设置。完整步骤见[操作指南](python_scheduler/README.md)。
 
-   ```powershell
-   python --version
-   python .\demo1.py
-   ```
+默认存档work/demo1-data/workspace.json，既有数据加载时不自动改写；重新生成和保存采用新的空白排程规则并保留.bak。测试数据仅放work/。
 
-   **成功标志：** Python 版本为 3.11+，且出现 Demo 1 窗口。首次运行为空白工作区；已有默认存档时加载本机数据。程序只读写本地工作区文件，不连接数据库。
-
-界面默认语言为 English。通过 `Language / 语言` 切换 `English` 或 `简体中文`；不假定选择会保存到下次启动。
-
-2. **录入任务。** 在 `Tasks`（任务）页的 `Task details`（任务信息）填写 `Title`（名称）、`Total minutes`（总分钟）、`Remaining minutes`（剩余分钟）、`Priority 1–5`（重要性）、`Earliest start`（最早开始）、`Deadline`（截止时间）和 `Allow splitting`（允许拆分），点击 `Add task`（新增任务）。选中任务后可用 `Update selected task`（保存修改）、`Record remaining`（记录进度）、`Mark complete`（标记完成）或 `Delete task`（删除任务）。
-
-   **成功标志：** 列表显示新任务及字段。完成和删除操作需确认；计划不会自动减少剩余分钟或标记完成。
-
-3. **设置规划时间和可用时段。** 打开 `Time`（时间）页，在 `Planning window and time zone`（规划窗口与时区）填写 `IANA time zone`（时区）、`Start`（开始）和 `End`（结束），点击 `Apply window`（应用窗口）。按需添加可用和忙碌区间，或选中区间后移除。
-
-   **成功标志：** 页面显示规划窗口、时区和各区间。默认 UTC；时间格式为 `YYYY-MM-DD HH:MM`。夏令时不存在的时间会被拒绝；重复时间需带偏移 ISO 格式。Windows 使用其他 IANA 时区可能需要 `python -m pip install tzdata`。
-
-4. **设置策略并生成计划。** 打开 `Plan`（计划）页，设置策略及 `Minimum block (min)`（最短块）和 `Maximum block (min)`（最长块），点击 `Apply settings`（应用设置），再点击 `Generate / replan`（生成/重新规划）。
-
-   **成功标志：** 计划显示任务、时间块、未排分钟和原因。计划只表示安排建议，不代表实际完成。
-
-5. **查看、比较或锁定。** 在计划列表查看结果。点击 `Compare strategies`（比较三种策略）可查看 EDF、importance 和 risk 结果。选中尚未开始的块后点 `Lock selected block`（锁定选中块）；在锁定列表选中块，再点 `Unlock selected locked block`（解锁）。
-
-   **成功标志：** 三策略结果可见；重排保留锁定块并重新安排其他任务。若任务或时间已修改，应重新生成有效计划后再锁定。已经开始的锁定块先解锁，再核对进度并更新剩余分钟。
-
-6. **保存和恢复工作区。** 窗口顶部的 `Save`（保存）写入默认路径 `work\demo1-data\workspace.json`；`Save as`（另存为）选择新位置，`Open workspace`（打开存档）选择现有文件，`Reload`（重新加载）读取当前路径。
-
-   **成功标志：** 保存后未保存状态清除，重启后同一路径恢复任务、设置和计划。已有存档会保留 `.bak`；并发修改或损坏存档不会被静默覆盖。关闭或加载时若有未保存更改，应选择保存、放弃或取消。
-
-可使用 `python .\demo1.py --data .\work\my-demo\workspace.json` 指定存档位置。用 `python .\demo1.py --terminal` 打开原终端菜单；用 `python .\demo1.py --demo` 运行合成案例。案例不是实际任务，也不代表完成。完整 GUI 操作和验收草稿见 [python_scheduler/README.md](python_scheduler/README.md) 与 [docs/scheduler/DEMO1_GUI_VERIFICATION.md](docs/scheduler/DEMO1_GUI_VERIFICATION.md)。
+改版范围见[CALENDAR_REDESIGN_PLAN.md](docs/scheduler/CALENDAR_REDESIGN_PLAN.md)，课程对应见[COURSE_ALIGNMENT.md](docs/scheduler/COURSE_ALIGNMENT.md)。
 
 本项目作为中期项目继续开发。应用名 Pinboard，仓库名 TTM_Task_Management_System。
 
