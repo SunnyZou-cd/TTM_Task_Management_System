@@ -64,6 +64,7 @@ class WorkspaceTests(unittest.TestCase):
         workspace = Workspace.new(NOW + timedelta(seconds=1))
         self.assertEqual(parse_datetime(workspace.snapshot["now"], "now"), NOW + timedelta(minutes=1))
         self.assertEqual(parse_datetime(workspace.snapshot["horizon_end"], "end"), NOW + timedelta(minutes=1, days=7))
+        self.assertEqual(workspace.snapshot["timezone"], "local")
         self.assertEqual(workspace.snapshot["tasks"], [])
         self.assertEqual(workspace.snapshot["availability"], [])
         self.assertIsNone(workspace.result)

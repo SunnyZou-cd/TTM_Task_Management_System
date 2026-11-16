@@ -153,6 +153,7 @@ class GUITests(unittest.TestCase):
     def test_calendar_busy_create_edit_and_invalid_edit_is_atomic(self):
         start = datetime.now(timezone.utc).replace(second=0, microsecond=0) + timedelta(days=2)
         self.app.busy_dialog(start=start); self.root.update()
+        self.assertIsNotNone(self._button(self.app._dialog,"Computer time: YYYY-MM-DD HH:MM"))
         self._button(self.app._dialog, "Save").invoke(); self.root.update()
         self.assertEqual(len(self.app.workspace.snapshot["busy_events"]), 1)
         self.app.event_dialog("busy", 0); self.root.update()
@@ -178,7 +179,7 @@ class GUITests(unittest.TestCase):
         self.assertEqual(self.app.workspace.snapshot["availability"], [])
         self.app.generate(); self.root.update()
         self.assertEqual(self.app.workspace.result["metrics"]["scheduled_minutes"],60)
-        self.assertEqual(self.app.view_date,start.date())
+        self.assertEqual(self.app.view_date,start.astimezone().date())
         self.assertTrue(any(kind=="block" for kind,index in self.app._calendar_items.values()))
         self.app.event_dialog("block",0); self.root.update()
         self._button(self.app._dialog,"Lock time").invoke(); self.root.update()
@@ -206,10 +207,51 @@ class GUITests(unittest.TestCase):
         self.assertEqual(self.app.workspace.to_document(),before)
         self.assertFalse(self.app.dirty)
 
+    def test_legacy_local_forms_show_wall_time_and_noop_settings_keep_plan(self):
+        from test_local_time import chicago_system
+        with chicago_system():
+            start=datetime(2030,1,1,9,tzinfo=timezone.utc)
+            end=start+timedelta(hours=4)
+            a,b=start.isoformat(),end.isoformat()
+            workspace=Workspace.new(start)
+            workspace.set_window(a,b,"UTC")
+            workspace.add_task(title="Legacy",estimated_minutes=60,remaining_minutes=60,importance=3,earliest_start=a,deadline=b,splittable=True)
+            workspace.add_interval("busy_events",a,(start+timedelta(minutes=30)).isoformat())
+            workspace.generate_calendar(now=start)
+            self.app.workspace=Workspace.from_document(workspace.to_document(),local_time=True)
+            self.app._last_snapshot=None; self.app.refresh(); self.app.dirty=False
+            self.assertEqual(set(self.app.window_vars), {"now","horizon_end"})
+            self.assertEqual(self.app.window_vars["now"].get(), "2030-01-01 03:00")
+            self.assertNotIn("Time zone", self.app.status.cget("text"))
+            before=self.app.workspace.to_document()
+            self.app.settings_dialog(); self.root.update()
+            self.assertIsNone(self._button(self.app._dialog,"IANA time zone"))
+            self._button(self.app._dialog,"Apply settings").invoke()
+            self.assertEqual(self.app.workspace.to_document(),before)
+            self.assertFalse(self.app.dirty)
+            self.app.task_tree.selection_set("0"); self.root.update()
+            self.app.task_dialog(edit=True); self.root.update()
+            self.assertEqual(self.app.task_vars["earliest_start"].get(),"2030-01-01 03:00")
+            self.assertEqual(self.app.task_vars["deadline"].get(),"2030-01-01 07:00")
+            self._button(self.app._dialog,"Save").invoke(); self.root.update()
+            self.assertEqual(self.app.workspace.snapshot["tasks"][0]["earliest_start"], a)
+            self.assertEqual(self.app.workspace.snapshot["tasks"][0]["deadline"], b)
+            self.app.busy_dialog(index=0); self.root.update()
+            self.assertEqual(self.app.interval_start.get(),"2030-01-01 03:00")
+            self.assertEqual(self.app.interval_end.get(),"2030-01-01 03:30")
+            self._button(self.app._dialog,"Save").invoke(); self.root.update()
+            self.assertEqual(self.app.workspace.snapshot["busy_events"],before["request"]["busy_events"])
+
     def test_calendar_click_rejects_dst_gap_and_fold(self):
         from datetime import date
         from types import SimpleNamespace
-        self.app._perform(self.app.workspace.set_window,"2027-01-01T00:00-06:00","2028-01-01T00:00-06:00","America/Chicago")
+        from zoneinfo import ZoneInfo
+        chicago=ZoneInfo("America/Chicago")
+        gui_zone=patch("academic_scheduler.gui.resolve_timezone", return_value=chicago)
+        terminal_zone=patch("academic_scheduler.terminal.resolve_timezone", return_value=chicago)
+        gui_zone.start(); terminal_zone.start()
+        self.addCleanup(gui_zone.stop); self.addCleanup(terminal_zone.stop)
+        self.app._perform(self.app.workspace.set_window,"2027-01-01T00:00-06:00","2028-01-01T00:00-06:00","local")
         self.app.view_mode.set("Day")
         for day,hour in ((date(2027,3,14),2.5),(date(2027,11,7),1.5)):
             self.app.view_date=day; self.app.draw_calendar(); self.root.update()

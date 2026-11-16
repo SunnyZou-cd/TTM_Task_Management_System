@@ -1,5 +1,7 @@
 # Demo 1 输入输出契约（schema_version = "1"）
 
+2026-11-16本机时间更新：GUI不再提供时区选择，新工作区内部timezone默认local（跟随系统按日期解析）。旧UTC/IANA JSON接口保持兼容。Workspace.from_document和Store.load默认严格保持输入；仅GUI显式local_time=True时转换内存显示，保留绝对时刻且不自动写回。详见LOCAL_TIME_VERIFICATION.md。
+
 Python >=3.11，标准库加 Windows IANA 数据依赖 tzdata。所有公开模型为 frozen dataclasses。未知字段拒绝；整数不接受 bool；字符串非空、无首尾空白且不含孤立 Unicode 代理字符；列表必须是 JSON 数组。输入错误抛 InputError(ValueError)，具有可读字段路径。原规划中的 task_id 可沿用 UUID；合成案例允许其他非空字符串。
 
 ## 输入

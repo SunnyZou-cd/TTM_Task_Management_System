@@ -1,7 +1,7 @@
 """Strict, immutable models for the standalone scheduler snapshot API."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone as datetime_timezone, tzinfo
+from datetime import datetime, timedelta, timezone as datetime_timezone, tzinfo
 import re
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -11,8 +11,48 @@ class InputError(ValueError):
     """A malformed snapshot or saved result, with a JSON field path."""
 
 
+def _system_localize(value: datetime) -> datetime:
+    """Use the OS rules for this wall date, including its PEP 495 fold."""
+    return value.astimezone()
+
+
+def _system_fromutc(value: datetime) -> datetime:
+    return datetime.fromtimestamp(value.replace(tzinfo=datetime_timezone.utc).timestamp())
+
+
+class _SystemLocalTimezone(tzinfo):
+    """System local rules per date, without an IANA database dependency.
+
+    A tzinfo captured from now().astimezone() is only a fixed offset. Instead,
+    naive astimezone and fromtimestamp consult the OS for each requested date.
+    The latter also restores fold when two UTC instants share a wall time.
+    """
+
+    def utcoffset(self, value):
+        if value is None:
+            return None
+        return _system_localize(value.replace(tzinfo=None)).utcoffset()
+
+    def dst(self, value):
+        # OS conversion supplies the complete offset; no adjustment is added.
+        return timedelta(0) if value is not None else None
+
+    def tzname(self, value):
+        return "local" if value is None else _system_localize(value.replace(tzinfo=None)).tzname()
+
+    def fromutc(self, value):
+        if value.tzinfo is not self:
+            raise ValueError("fromutc: datetime must use this timezone")
+        return _system_fromutc(value).replace(tzinfo=self)
+
+
+_LOCAL_TIMEZONE = _SystemLocalTimezone()
+
+
 def resolve_timezone(name: str) -> tzinfo:
-    """Keep the default UTC workspace usable without optional IANA data."""
+    """Resolve system local time, UTC, or a compatible JSON IANA timezone."""
+    if name == "local":
+        return _LOCAL_TIMEZONE
     if name == "UTC":
         return datetime_timezone.utc
     if not isinstance(name, str) or not name or name.strip() != name:
@@ -154,14 +194,14 @@ def parse_datetime(value: Any, path: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed.astimezone(datetime_timezone.utc)
-    except (ValueError, OverflowError) as exc:
+    except (ValueError, OverflowError, OSError) as exc:
         raise InputError(f"{path}: invalid timestamp") from exc
 
 
 def _display_time(value: datetime, zone: tzinfo, path: str) -> str:
     try:
         local = value.astimezone(zone)
-    except (ValueError, OverflowError) as exc:
+    except (ValueError, OverflowError, OSError) as exc:
         raise InputError(f"{path}: timestamp is outside the display timezone's supported datetime range") from exc
     offset = local.utcoffset()
     if offset is None or offset.total_seconds() % 60 or local.second or local.microsecond:

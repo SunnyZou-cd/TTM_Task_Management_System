@@ -30,10 +30,10 @@ def _digest(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def _decode(content: bytes) -> Workspace:
+def _decode(content: bytes, *, local_time: bool = False) -> Workspace:
     try:
         document = json.loads(content.decode("utf-8-sig"), object_pairs_hook=_pairs, parse_constant=_constant)
-        return Workspace.from_document(document)
+        return Workspace.from_document(document, local_time=local_time)
     except (UnicodeError, ValueError, RecursionError) as exc:
         raise StorageError(f"无法读取工作区存档：{exc}") from exc
 
@@ -43,12 +43,12 @@ class WorkspaceStore:
         self.path = Path(path).expanduser().absolute()
         self._fingerprint: str | None = None
 
-    def load(self) -> Workspace:
+    def load(self, *, local_time: bool = False) -> Workspace:
         try:
             content = self.path.read_bytes()
         except OSError as exc:
             raise StorageError(f"无法打开存档 {self.path}：{exc}") from exc
-        workspace = _decode(content)
+        workspace = _decode(content, local_time=local_time)
         self._fingerprint = _digest(content)
         return workspace
 

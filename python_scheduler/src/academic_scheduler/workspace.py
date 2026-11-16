@@ -63,17 +63,29 @@ class Workspace:
             end = start + timedelta(days=7)
         except OverflowError as exc:
             raise WorkspaceError("新工作区的七天窗口超出可用日期范围。") from exc
-        return cls({"schema_version": "1", "request_id": str(uuid4()), "input_revision": str(uuid4()), "now": _stamp(start), "timezone": "UTC", "horizon_end": _stamp(end), "tasks": [], "availability": [], "busy_events": [], "locked_blocks": [], "strategy": "edf", "parameters": {"min_block_minutes": 15, "max_block_minutes": 60}})
+        return cls({"schema_version": "1", "request_id": str(uuid4()), "input_revision": str(uuid4()), "now": _stamp(start), "timezone": "local", "horizon_end": _stamp(end), "tasks": [], "availability": [], "busy_events": [], "locked_blocks": [], "strategy": "edf", "parameters": {"min_block_minutes": 15, "max_block_minutes": 60}})
 
     @classmethod
-    def from_document(cls, document: dict) -> "Workspace":
+    def from_document(cls, document: dict, *, local_time: bool = False) -> "Workspace":
         if not isinstance(document, dict) or set(document) != {"format", "version", "request", "result"}:
             raise WorkspaceError("存档必须包含 format、version、request、result 四个字段。")
         if document["format"] != "academic-scheduler-workspace" or type(document["version"]) is not int or document["version"] != 1:
             raise WorkspaceError("不支持的工作区存档格式或版本。")
         if document["result"] is not None and not isinstance(document["result"], dict):
             raise WorkspaceError("存档 result 必须是计划对象或 null。")
-        return cls(document["request"], document["result"])
+        if not local_time:
+            return cls(document["request"], document["result"])
+        # Only the in-memory display preference changes. Endpoints, revisions,
+        # locks and the existing plan retain their original absolute instants.
+        request = deepcopy(document["request"])
+        if isinstance(request, dict) and "timezone" in request:
+            if not isinstance(request["timezone"], str) or not request["timezone"] or request["timezone"].strip() != request["timezone"]:
+                raise WorkspaceError("timezone: must be a nonempty string without surrounding whitespace")
+            request["timezone"] = "local"
+        workspace = cls(request, document["result"])
+        if workspace._result is not None:
+            workspace._result = result_to_dict(parse_result(workspace._result), "local")
+        return workspace
 
     def to_document(self) -> dict:
         _validated(self._request, self._result)

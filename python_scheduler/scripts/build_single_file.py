@@ -9,29 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MODULES = ROOT / "python_scheduler" / "src" / "academic_scheduler"
 ORDER = ("models", "availability", "strategies", "metrics", "engine", "validation",
          "workspace", "storage", "terminal", "cli", "demo_cases", "demo", "gui", "application")
-HEADER = '''#!/usr/bin/env python3
-"""Demo 1: graphical Python academic scheduling software (Python 3.11+).
-
-Run: python demo1.py
-Text menu: python demo1.py --terminal
-Separate personal file: python demo1.py --data work/my-tasks.json
-Optional synthetic examples: python demo1.py --demo
-Machine-readable example results: python demo1.py --demo --json
-
-All source is in this file. Default UTC needs only the Python standard library.
-The graphical interface uses tkinter, included with standard Windows Python.
-Other IANA timezones need system timezone data or tzdata.
-The program writes personal data only when the user chooses to save.
-The default file is work/demo1-data/workspace.json under the current directory.
-
-Generated from the tested modules by python_scheduler/scripts/build_single_file.py.
-No runtime exec, encoded payload, project import or external example is required.
-Regeneration overwrites edits to this file; use a copy for personal experiments.
-"""
-
-from __future__ import annotations
-
-'''
+HEADER = '"""\nDemo 1: graphical Python academic scheduling system.\nAuthor: Sunny Zou\nDate: 2026-11-13\n"""\n\nfrom __future__ import annotations\n\n'
 
 
 def _defined_names(tree, module):

@@ -29,7 +29,9 @@ class TerminalTests(unittest.TestCase):
     def test_full_workflow_and_restart(self):
         start = (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
         end = start + timedelta(hours=4)
-        fmt = lambda value: value.strftime("%Y-%m-%d %H:%M")
+        # These fixtures are UTC instants; do not reinterpret them using the
+        # computer's default local zone before the test selects UTC explicitly.
+        fmt = lambda value: value.isoformat(timespec="minutes")
         answers = [
             "1", "2", "阅读教材", "60", "60", "4", fmt(end), fmt(start), "y", "0",
             "2", "1", "UTC", fmt(start), fmt(end), "3", fmt(start), fmt(end), "0",

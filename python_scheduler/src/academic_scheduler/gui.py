@@ -49,7 +49,7 @@ _EN = {
 
 _EN.update({"表单尚未应用": "Unapplied form changes", "请先应用或清空表单中的更改，再保存。": "Apply or clear form changes before saving.", "有尚未应用的表单内容，确认放弃？": "Discard unapplied form changes?", "任务表单有未应用的更改，确认放弃并选择其他任务？": "Discard unapplied task changes and select another task?"})
 _EN.update({"文件":"File", "今天":"Today", "规划设置":"Planning settings", "＋ 新建任务":"＋ Create task", "编辑":"Edit", "日":"Day", "周":"Week", "高级选项":"Advanced options", "取消":"Cancel", "删除":"Delete", "忙碌时间":"Busy time", "计划块":"Plan block", "解锁":"Unlock", "锁定时间":"Lock time", "编辑任务":"Edit task", "点击空白添加忙碌时间 · 点击色块查看详情":"Click an empty slot to add busy time · Click a block for details", "按日历空白自动安排；忙碌时间与锁定块会被保留。":"Schedule in free calendar slots. Busy time and locked blocks are preserved."})
-_EN.update({"在整个规划范围的空白时间安排":"Free slots across the planning window"})
+_EN.update({"在整个规划范围的空白时间安排":"Free slots across the planning window", "本机时间 YYYY-MM-DD HH:MM":"Computer time: YYYY-MM-DD HH:MM"})
 _ZH_ERRORS = {
     "must be ISO 8601 with explicit minute offset and zero seconds/microseconds": "须为带明确时差且秒数为零的 ISO 时间",
     "must be a nonempty string without surrounding whitespace": "不能为空，且首尾不能有空格", "must contain valid Unicode scalar values": "必须包含有效字符",
@@ -67,6 +67,17 @@ def _english(text):
     return text
 
 
+def _local_text(value):
+    return parse_datetime(value, "时间").astimezone(resolve_timezone("local")).strftime("%Y-%m-%d %H:%M")
+
+
+def _local_input(value, original=None):
+    # Keeping an unchanged field preserves its exact instant, including fold.
+    if original is not None and value == _local_text(original):
+        return original
+    return _time(value, "local")
+
+
 class _Dialogs:
     def __init__(self, gui): self.gui = gui
     def __getattr__(self, name):
@@ -80,6 +91,7 @@ class _Dialogs:
 
 class SchedulerGUI:
     def __init__(self, root, store, workspace):
+        workspace = Workspace.from_document(workspace.to_document(), local_time=True)
         self.root, self.store, self.workspace = root, store, workspace
         self.dirty = False
         self._suppress_selection = False
@@ -87,7 +99,7 @@ class SchedulerGUI:
         self._last_snapshot = None
         self.language = tk.StringVar(value="English")
         self.msg = _Dialogs(self)
-        self.view_date = parse_datetime(workspace.snapshot["now"], "now").astimezone(resolve_timezone(workspace.snapshot["timezone"])).date()
+        self.view_date = parse_datetime(workspace.snapshot["now"], "now").astimezone(resolve_timezone("local")).date()
         self.view_mode = tk.StringVar(value="Week")
         self._dialog = None
         root.geometry("1240x800")
@@ -220,7 +232,7 @@ class SchedulerGUI:
         self.lock_tree.bind("<<TreeviewSelect>>", lambda event: self._exclusive_selection(self.lock_tree, self.block_tree))
         self.task_vars = {name: tk.StringVar() for name in ("title", "estimated_minutes", "remaining_minutes", "importance", "earliest_start", "deadline")}
         self.splittable = tk.BooleanVar(value=True)
-        self.window_vars = {key: tk.StringVar() for key in ("timezone", "now", "horizon_end")}
+        self.window_vars = {key: tk.StringVar() for key in ("now", "horizon_end")}
         self.interval_start, self.interval_end = tk.StringVar(), tk.StringVar()
         self.strategy_var, self.min_var, self.max_var = tk.StringVar(), tk.StringVar(), tk.StringVar()
 
@@ -228,7 +240,7 @@ class SchedulerGUI:
         return True
 
     def today(self):
-        self.view_date = datetime.now(resolve_timezone(self.workspace.snapshot["timezone"])).date()
+        self.view_date = datetime.now(resolve_timezone("local")).date()
         self.draw_calendar()
 
     def navigate(self, direction):
@@ -247,7 +259,7 @@ class SchedulerGUI:
         self.canvas.configure(scrollregion=(0, 0, width, hour*24))
         self.date_title.configure(text=f"{dates[0]:%b %d} – {dates[-1]:%b %d, %Y}" if len(dates)>1 else f"{dates[0]:%b %d, %Y}")
         weekdays = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun") if self.language.get()=="English" else ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-        zone = resolve_timezone(self.workspace.snapshot["timezone"])
+        zone = resolve_timezone("local")
         today = datetime.now(zone).date()
         for i, day in enumerate(dates):
             x = gutter+i*col
@@ -296,7 +308,7 @@ class SchedulerGUI:
                     text=f"{start:%H:%M}  {'◆ ' if locked else ''}{label}"
                     if dst:
                         elapsed=int((end.astimezone(timezone.utc)-start.astimezone(timezone.utc)).total_seconds()/60)
-                        text=f"{start:%H:%M %z} → {end:%H:%M %z} ({elapsed} min) {label}"
+                        text=f"{start:%H:%M} → {end:%H:%M} ({elapsed} min) {label}"
                     fitted=self._fit_event_text(text,max(10,x2-x1-10),bottom-y1-7)
                     self.canvas.create_text(x1+5,y1+5,text=fitted,anchor="nw",fill="#253858",font=("Segoe UI",9),tags=tag)
                     self._calendar_items[tag]=(kind,index)
@@ -327,10 +339,10 @@ class SchedulerGUI:
         if event.x<gutter: return
         day=min(len(dates)-1,max(0,int((event.x-gutter)/col)))
         minutes=min(23*60+45,max(0,int(self.canvas.canvasy(event.y)/hour*4)*15))
-        zone=resolve_timezone(self.workspace.snapshot["timezone"])
+        zone=resolve_timezone("local")
         start=datetime.combine(dates[day],time(),zone)+timedelta(minutes=minutes)
         try:
-            _time(start.strftime("%Y-%m-%d %H:%M"), self.workspace.snapshot["timezone"])
+            _time(start.strftime("%Y-%m-%d %H:%M"), "local")
         except ValueError as exc:
             self.msg.showerror("时间有误",str(exc),parent=self.root); return
         self.busy_dialog(start=start)
@@ -353,12 +365,12 @@ class SchedulerGUI:
         dialog=self._new_dialog("任务信息")
         if dialog is None: return
         if edit:
-            for key,var in self.task_vars.items(): var.set(str(task[key]))
+            for key,var in self.task_vars.items(): var.set(_local_text(task[key]) if key in ("earliest_start", "deadline") else str(task[key]))
             self.splittable.set(task["splittable"])
             self._task_baseline=(task["task_id"],self._task_form())
         else:
             self.clear_task(); snap=self.workspace.snapshot
-            for key,value in {"estimated_minutes":"60","remaining_minutes":"60","importance":"3","earliest_start":snap["now"],"deadline":snap["horizon_end"]}.items(): self.task_vars[key].set(value)
+            for key,value in {"estimated_minutes":"60","remaining_minutes":"60","importance":"3","earliest_start":_local_text(snap["now"]),"deadline":_local_text(snap["horizon_end"])}.items(): self.task_vars[key].set(value)
         form=ttk.Frame(dialog,padding=20); form.pack(fill="both")
         def field(parent,row,key,label):
             ttk.Label(parent,text=label).grid(row=row,column=0,sticky="w",pady=6)
@@ -396,26 +408,26 @@ class SchedulerGUI:
     def busy_dialog(self, start=None, index=None):
         dialog=self._new_dialog("忙碌时间")
         if dialog is None: return
-        zone=resolve_timezone(self.workspace.snapshot["timezone"])
+        zone=resolve_timezone("local")
         if index is not None:
             interval=self.workspace.snapshot["busy_events"][index]
             a,b=interval["start"],interval["end"]
         else:
             start=start or datetime.now(zone).replace(second=0,microsecond=0)
             a,b=start.isoformat(timespec="minutes"),(start+timedelta(hours=1)).isoformat(timespec="minutes")
-        self.interval_start.set(a); self.interval_end.set(b)
+        self.interval_start.set(_local_text(a)); self.interval_end.set(_local_text(b))
         form=ttk.Frame(dialog,padding=20); form.pack()
         for row,(label,var) in enumerate((("开始",self.interval_start),("结束",self.interval_end))):
             ttk.Label(form,text=label).grid(row=row,column=0,sticky="w",pady=8)
             ttk.Entry(form,textvariable=var,width=36).grid(row=row,column=1,padx=12)
-        ttk.Label(form,text="时间可输入 YYYY-MM-DD HH:MM（当前时区）或带偏移 ISO 时间。",wraplength=360).grid(row=2,column=0,columnspan=2,sticky="w",pady=8)
+        ttk.Label(form,text="本机时间 YYYY-MM-DD HH:MM",wraplength=360).grid(row=2,column=0,columnspan=2,sticky="w",pady=8)
         def finish(): self.interval_start.set(""); self.interval_end.set(""); dialog.destroy()
         def save_busy():
             try:
-                a=_time(self.interval_start.get().strip(),self.workspace.snapshot["timezone"])
-                b=_time(self.interval_end.get().strip(),self.workspace.snapshot["timezone"])
+                start_value=_local_input(self.interval_start.get().strip(), a)
+                end_value=_local_input(self.interval_end.get().strip(), b)
             except ValueError as exc: self.msg.showerror("时间有误",str(exc),parent=dialog); return
-            ok=self._perform(self.workspace.add_interval,"busy_events",a,b) if index is None else self._perform(self.workspace.update_interval,"busy_events",index,a,b)
+            ok=self._perform(self.workspace.add_interval,"busy_events",start_value,end_value) if index is None else self._perform(self.workspace.update_interval,"busy_events",index,start_value,end_value)
             if ok: finish()
         bar=ttk.Frame(form); bar.grid(row=3,column=0,columnspan=2,sticky="e")
         if index is not None:
@@ -434,8 +446,8 @@ class SchedulerGUI:
         form=ttk.Frame(dialog,padding=20); form.pack()
         title_label=ttk.Label(form,text=task["title"] if task else self.tr("固定预留"),font=("Segoe UI",13,"bold"),wraplength=400)
         title_label._user_content=True; title_label.pack(anchor="w")
-        zone=resolve_timezone(snap["timezone"])
-        ttk.Label(form,text="\n".join(parse_datetime(item[key],key).astimezone(zone).strftime("%a %b %d  %H:%M %z") for key in ("start","end"))).pack(anchor="w",pady=16)
+        zone=resolve_timezone("local")
+        ttk.Label(form,text="\n".join(parse_datetime(item[key],key).astimezone(zone).strftime("%a %b %d  %H:%M") for key in ("start","end"))).pack(anchor="w",pady=16)
         locked=kind=="lock" or item.get("source")=="locked"
         def act():
             ok=self._perform(self.workspace.unlock,item["locked_id"]) if locked else self._perform(self.workspace.lock_block,index)
@@ -453,7 +465,7 @@ class SchedulerGUI:
         dialog=self._new_dialog("规划设置")
         if dialog is None: return
         form=ttk.Frame(dialog,padding=20); form.pack()
-        fields=(("timezone","IANA 时区"),("now","开始"),("horizon_end","结束"))
+        fields=(("now","开始"),("horizon_end","结束"))
         for row,(key,label) in enumerate(fields):
             ttk.Label(form,text=label).grid(row=row,column=0,sticky="w",pady=6)
             ttk.Entry(form,textvariable=self.window_vars[key],width=34).grid(row=row,column=1,padx=12)
@@ -465,15 +477,13 @@ class SchedulerGUI:
         ttk.Label(form,text="按日历空白自动安排；忙碌时间与锁定块会被保留。",wraplength=390).grid(row=6,column=0,columnspan=2,sticky="w",pady=12)
         def cancel():
             snap=self.workspace.snapshot
-            for key,var in self.window_vars.items(): var.set(snap[key])
+            for key,var in self.window_vars.items(): var.set(_local_text(snap[key]))
             self.strategy_var.set(snap["strategy"]); self.min_var.set(str(snap["parameters"]["min_block_minutes"])); self.max_var.set(str(snap["parameters"]["max_block_minutes"]))
             dialog.destroy()
         def apply():
             try:
                 candidate = self.workspace.snapshot
-                zone = self.window_vars["timezone"].get().strip()
-                resolve_timezone(zone)
-                candidate.update(timezone=zone, now=_time(self.window_vars["now"].get().strip(),zone), horizon_end=_time(self.window_vars["horizon_end"].get().strip(),zone), strategy=self.strategy_var.get())
+                candidate.update(timezone="local", now=_local_input(self.window_vars["now"].get().strip(),candidate["now"]), horizon_end=_local_input(self.window_vars["horizon_end"].get().strip(),candidate["horizon_end"]), strategy=self.strategy_var.get())
                 candidate["parameters"] = {"min_block_minutes":int(self.min_var.get()), "max_block_minutes":int(self.max_var.get())}
                 changed = candidate != self.workspace.snapshot
                 if changed: candidate["input_revision"] = str(uuid4())
@@ -528,7 +538,7 @@ class SchedulerGUI:
                 self.root.after_idle(lambda: setattr(self, "_suppress_selection", False))
                 return
         task = self._selected_task()
-        for name, var in self.task_vars.items(): var.set(str(task[name]))
+        for name, var in self.task_vars.items(): var.set(_local_text(task[name]) if name in ("earliest_start", "deadline") else str(task[name]))
         self.splittable.set(task["splittable"])
         self._task_baseline = (task["task_id"], self._task_form())
 
@@ -539,7 +549,7 @@ class SchedulerGUI:
         snap = self.workspace.snapshot
         baseline = self._task_baseline[1] if self._task_baseline is not None else ("", "", "", "", "", "", True)
         task_draft = self._task_form() != baseline
-        window_draft = any(var.get() != snap[key] for key, var in self.window_vars.items())
+        window_draft = any(var.get() != _local_text(snap[key]) for key, var in self.window_vars.items())
         settings_draft = (self.strategy_var.get(), self.min_var.get(), self.max_var.get()) != (snap["strategy"], str(snap["parameters"]["min_block_minutes"]), str(snap["parameters"]["max_block_minutes"]))
         return task_draft or window_draft or settings_draft or bool(self.interval_start.get().strip() or self.interval_end.get().strip())
 
@@ -557,8 +567,9 @@ class SchedulerGUI:
         if values["estimated_minutes"] < 0 or values["remaining_minutes"] < 0: raise ValueError("工作分钟不能为负数。")
         if values["remaining_minutes"] > values["estimated_minutes"]: raise ValueError("剩余分钟不能大于总分钟。")
         if not 1 <= values["importance"] <= 5: raise ValueError("重要性必须在 1 到 5 之间。")
-        zone = self.workspace.snapshot["timezone"]
-        for key in ("deadline", "earliest_start"): values[key] = _time(values[key], zone)
+        snap = self.workspace.snapshot
+        original = self._selected_task() if self.task_tree.selection() else {"earliest_start":snap["now"], "deadline":snap["horizon_end"]}
+        for key in ("deadline", "earliest_start"): values[key] = _local_input(values[key], original[key])
         values["splittable"] = self.splittable.get()
         return values
 
@@ -590,16 +601,15 @@ class SchedulerGUI:
 
     def set_window(self):
         try:
-            zone = self.window_vars["timezone"].get().strip()
-            resolve_timezone(zone)
-            start = _time(self.window_vars["now"].get().strip(), zone)
-            end = _time(self.window_vars["horizon_end"].get().strip(), zone)
+            zone = "local"
+            start = _local_input(self.window_vars["now"].get().strip(), self.workspace.snapshot["now"])
+            end = _local_input(self.window_vars["horizon_end"].get().strip(), self.workspace.snapshot["horizon_end"])
         except ValueError as exc: self.msg.showerror("时间有误", str(exc), parent=self.root); return
         self._perform(self.workspace.set_window, start, end, zone)
 
     def add_interval(self, kind):
         try:
-            zone = self.workspace.snapshot["timezone"]
+            zone = "local"
             start, end = _time(self.interval_start.get().strip(), zone), _time(self.interval_end.get().strip(), zone)
         except ValueError as exc: self.msg.showerror("时间有误", str(exc), parent=self.root); return
         if self._perform(self.workspace.add_interval, kind, start, end): self.interval_start.set(""); self.interval_end.set("")
@@ -626,7 +636,7 @@ class SchedulerGUI:
         if self._perform(self.workspace.generate_calendar):
             blocks = self.workspace.result["blocks"]
             if blocks:
-                start = parse_datetime(blocks[0]["start"],"start").astimezone(resolve_timezone(self.workspace.snapshot["timezone"]))
+                start = parse_datetime(blocks[0]["start"],"start").astimezone(resolve_timezone("local"))
                 self.view_date = start.date(); self.draw_calendar()
                 self.canvas.yview_moveto(max(0, start.hour-1)/24)
 
@@ -673,7 +683,7 @@ class SchedulerGUI:
 
     def refresh(self):
         snap, result = self.workspace.snapshot, self.workspace.result
-        self.status.configure(text=f"{self.tr('存档：')}{self.store.path}  |  {self.tr('未保存' if self.dirty else '无未保存更改')}  |  {self.tr('时区：')}{snap['timezone']}")
+        self.status.configure(text=f"{self.tr('存档：')}{self.store.path}  |  {self.tr('未保存' if self.dirty else '无未保存更改')}")
         selections = {tree: tree.selection() for tree in (self.task_tree, self.interval_tree, self.block_tree, self.lock_tree)}
         for tree in selections: tree.delete(*tree.get_children())
         names = {t["task_id"]: t["title"] for t in snap["tasks"]}
@@ -681,16 +691,16 @@ class SchedulerGUI:
             statuses = {"active": "Active", "completed": "Completed", "deleted": "Deleted"} if self.language.get() == "English" else {"active": "进行中", "completed": "已完成", "deleted": "已删除"}
             self.task_tree.insert("", "end", iid=str(i), values=(task["title"], f"{task['remaining_minutes']}/{task['estimated_minutes']}"))
         for kind, label in (("availability", "可用"), ("busy_events", "忙碌")):
-            for i, interval in enumerate(snap[kind]): self.interval_tree.insert("", "end", iid=f"{kind}:{i}", values=(self.tr(label), interval["start"], interval["end"]))
-        for i, lock in enumerate(snap["locked_blocks"]): self.lock_tree.insert("", "end", iid=str(i), values=(names.get(lock["task_id"], self.tr("固定预留")), lock["start"], lock["end"]))
+            for i, interval in enumerate(snap[kind]): self.interval_tree.insert("", "end", iid=f"{kind}:{i}", values=(self.tr(label), _local_text(interval["start"]), _local_text(interval["end"])))
+        for i, lock in enumerate(snap["locked_blocks"]): self.lock_tree.insert("", "end", iid=str(i), values=(names.get(lock["task_id"], self.tr("固定预留")), _local_text(lock["start"]), _local_text(lock["end"])))
         if result:
-            for i, block in enumerate(result["blocks"]): self.block_tree.insert("", "end", iid=str(i), values=(names.get(block["task_id"], self.tr("固定预留")), block["start"], block["end"], block["minutes"], self.tr("已锁定" if block["source"] == "locked" else "自动")))
+            for i, block in enumerate(result["blocks"]): self.block_tree.insert("", "end", iid=str(i), values=(names.get(block["task_id"], self.tr("固定预留")), _local_text(block["start"]), _local_text(block["end"]), block["minutes"], self.tr("已锁定" if block["source"] == "locked" else "自动")))
         for tree, items in selections.items():
             for item in items:
                 if tree.exists(item): tree.selection_add(item)
         old = self._last_snapshot
         for key, var in self.window_vars.items():
-            if old is None or old[key] != snap[key]: var.set(snap[key])
+            if old is None or old[key] != snap[key]: var.set(_local_text(snap[key]))
         if old is None or old["strategy"] != snap["strategy"]: self.strategy_var.set(snap["strategy"])
         if old is None or old["parameters"] != snap["parameters"]:
             self.min_var.set(str(snap["parameters"]["min_block_minutes"]))
@@ -724,7 +734,7 @@ class SchedulerGUI:
         return not self.dirty or self.msg.askyesno("放弃更改", "有未保存更改，确认放弃并加载其他存档？", parent=self.root)
 
     def _load(self, candidate):
-        try: workspace = candidate.load()
+        try: workspace = candidate.load(local_time=True)
         except (ValueError, OSError) as exc: self.msg.showerror("加载失败", str(exc), parent=self.root); return False
         self.store, self.workspace, self.dirty = candidate, workspace, False
         self.clear_task(); self.interval_start.set(""); self.interval_end.set(""); self._last_snapshot = None; self.refresh(); return True
@@ -753,7 +763,7 @@ def run_gui(data_path: str | Path | None = None) -> int:
     root = tk.Tk()
     root.withdraw()
     store = WorkspaceStore(path)
-    try: workspace = store.load() if path.exists() else Workspace.new()
+    try: workspace = store.load(local_time=True) if path.exists() else Workspace.new()
     except (ValueError, OSError) as exc:
         messagebox.showerror("Could not load workspace", _english(exc), parent=root)
         root.destroy()
