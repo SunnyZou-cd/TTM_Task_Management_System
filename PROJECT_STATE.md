@@ -1,5 +1,12 @@
 # 项目状态 · 2026-11-16
 
+## 课程级重构（当前默认版本）
+
+- 按用户USACO银/大二水平要求，将默认demo1.py改为简短入口，运行course_demo/三个直接维护的模块：ui、scheduler、storage。状态采用普通列表/字典，一个主要Tkinter类，取消默认生成源码和旧框架依赖。
+- 保留日/周日历、任务管理和进度、三策略、忙碌、锁定重排、英中、本机时间、JSON保存与恢复。默认新路径work/course-demo/workspace.json；旧存档通过Import legacy只读导入再另存，原文件不覆盖。
+- 课程版29项测试、历史高级版104项回归通过；实际Tk操作与独立复制启动通过，中英及小窗口截图已检查。详细范围见[课程版验收](docs/scheduler/COURSE_REFACTOR_VERIFICATION.md)。
+- 当前指南：[course_demo/README.md](course_demo/README.md)；阅读顺序和手算示例：[COURSE_CODE_GUIDE.md](docs/scheduler/COURSE_CODE_GUIDE.md)。以下是高级版演进历史，不是当前程序的前置知识。
+
 ## 本机时间更新
 
 - 界面时区选择和状态栏时区文字已移除；任务、忙碌事件、规划范围和日历均使用本机时间。默认新工作区使用系统本地规则，内部UTC约束保留。

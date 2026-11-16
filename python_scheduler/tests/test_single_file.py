@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import shutil
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -26,7 +27,10 @@ class SingleFileTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         self.script = self.directory / "demo1.py"
-        shutil.copyfile(ROOT / "demo1.py", self.script)
+        # Regression for the historical advanced implementation. The root
+        # demo1.py now starts the smaller, directly maintained course version.
+        builder = runpy.run_path(str(ROOT / "python_scheduler" / "scripts" / "build_single_file.py"))
+        self.script.write_text(builder["build"](), encoding="utf-8")
 
     def invoke(self, *args, data=None):
         # -I ignores project paths and user configuration; -S disables all
@@ -247,7 +251,7 @@ assert namespace["main"](["--terminal"]) == 0
     def test_generated_source_is_in_sync(self):
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"
-        process = subprocess.run([sys.executable, str(ROOT / "python_scheduler" / "scripts" / "build_single_file.py"), "--check"],
+        process = subprocess.run([sys.executable, str(ROOT / "python_scheduler" / "scripts" / "build_single_file.py"), "--check", "--output", str(self.script)],
                                  cwd=self.directory, capture_output=True, encoding="utf-8", timeout=30, env=env)
         self.assertSuccess(process)
         self.assertIn("synchronized", process.stdout)

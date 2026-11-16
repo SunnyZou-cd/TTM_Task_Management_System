@@ -1,18 +1,20 @@
 # 项目接续入口
 
-Demo 1 已改为以日历为中心的工作区，移除独立Time页面。默认英文，可切换简体中文。日期与时间默认使用本机设置，界面不提供时区选择。按用户确认使用日历空白安排，并直接管理忙碌事件。98项测试与可见窗口检查通过，证据见[日历验收](docs/scheduler/CALENDAR_REDESIGN_VERIFICATION.md)。
+当前默认版本为面向课程阅读的Python程序。demo1.py只负责启动，course_demo/包含ui.py（一个Tkinter类）、scheduler.py（排序/贪心/区间）和storage.py（普通JSON文件函数）。不再生成根目录源码，也不需要先理解旧框架。
 
-启动目的：打开本地窗口；只有选择保存才写入个人存档。在项目根目录执行：
+在本目录执行以下命令打开软件；只有选择Save才写入个人存档：
 
 ```powershell
 python .\demo1.py
 ```
 
-成功标志：窗口显示日期导航、左侧任务栏、中央周/日日历。点击Create task新增任务，点击日历空白添加忙碌时段，点击Generate生成安排。File菜单保存/加载；Planning settings收纳低频设置。完整步骤见[操作指南](python_scheduler/README.md)。
+成功标志：出现任务侧栏和周/日日历。默认English，可选择中文，使用本机时间。需要保留demo1.py和整个course_demo文件夹，不能只复制入口。
 
-默认存档work/demo1-data/workspace.json，既有数据加载时不自动改写；重新生成和保存采用新的空白排程规则并保留.bak。测试数据仅放work/。
+默认新存档work/course-demo/workspace.json；旧work/demo1-data/workspace.json不会自动迁移。通过File → Import legacy导入后另存，原文件保持不变。
 
-改版范围见[CALENDAR_REDESIGN_PLAN.md](docs/scheduler/CALENDAR_REDESIGN_PLAN.md)，课程对应见[COURSE_ALIGNMENT.md](docs/scheduler/COURSE_ALIGNMENT.md)。
+[操作指南](course_demo/README.md) · [代码阅读顺序](docs/scheduler/COURSE_CODE_GUIDE.md) · [实际验收](docs/scheduler/COURSE_REFACTOR_VERIFICATION.md)
+
+课程版29项测试通过；python_scheduler/保留历史高级版本，104项历史回归通过。旧生成工具仅输出work/advanced-demo/demo1.py；本轮开始时的旧根文件原样备份于work/course-refactor/original_demo1.py。
 
 本项目作为中期项目继续开发。应用名 Pinboard，仓库名 TTM_Task_Management_System。
 

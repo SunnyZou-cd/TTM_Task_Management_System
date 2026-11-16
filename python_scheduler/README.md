@@ -1,3 +1,5 @@
+> 历史高级版本说明：当前根目录demo1.py已改为课程版入口，请以[course_demo/README.md](../course_demo/README.md)为准。本文件中的旧入口操作属于历史记录；高级版可安装本包后通过python -m academic_scheduler运行。旧生成器仅写work/advanced-demo/demo1.py，不再覆盖当前入口。
+
 # Demo 1 · 日历工作区
 
 使用Python 3.11+，在项目根目录执行 `python demo1.py` 打开窗口；选择Save时才写入本地存档。默认English，顶部可切换简体中文，选择仅作用于本次会话。日期和时间跟随本机设置，无需选择时区。

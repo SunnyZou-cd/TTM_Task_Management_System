@@ -1,4 +1,4 @@
-"""Build readable standalone Python source; --check only detects drift."""
+"""Historical advanced-version builder, isolated from the course entry point."""
 
 import argparse
 import ast
@@ -110,14 +110,16 @@ def build():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--output", type=Path, default=ROOT / "work" / "advanced-demo" / "demo1.py")
     args = parser.parse_args()
-    target = ROOT / "demo1.py"
+    target = args.output
     expected = build()
     if args.check:
         if not target.exists() or target.read_text(encoding="utf-8") != expected:
             parser.exit(1, "demo1.py differs from modular sources; regenerate it\n")
         print("demo1.py is synchronized")
     else:
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(expected, encoding="utf-8", newline="\n")
         print(f"Generated {target}")
 

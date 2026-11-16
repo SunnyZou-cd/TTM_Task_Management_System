@@ -1,5 +1,7 @@
 # Intelligent Academic Workload Scheduler — 项目规划
 
+当前默认入口已按用户要求重构为课程级三个模块，目标和边界见[COURSE_REFACTOR_PLAN.md](docs/scheduler/COURSE_REFACTOR_PLAN.md)，阅读说明见[COURSE_CODE_GUIDE.md](docs/scheduler/COURSE_CODE_GUIDE.md)。以下保留原高级版规划与演进记录，不要求先读其框架才能理解当前程序。
+
 规划日期：2026-11-04。2026-11-15更新：Demo 1交付目标已修订为能实际管理任务的Python终端软件，默认个人菜单，包含完整录入、生成、锁定重排和持久化流程，已完成本轮验收。目标见[DEMO1_PRODUCT_PLAN.md](docs/scheduler/DEMO1_PRODUCT_PLAN.md)，证据见[DEMO1_PRODUCT_VERIFICATION.md](docs/scheduler/DEMO1_PRODUCT_VERIFICATION.md)。以下日期保留为原规划，不表示按原日期交付。
 
 ## 目标与依据
