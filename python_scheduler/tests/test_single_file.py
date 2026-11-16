@@ -52,13 +52,74 @@ class SingleFileTests(unittest.TestCase):
         self.assertIn("锁定 keep-draft-session", process.stdout)
         self.assertEqual([path.name for path in self.directory.iterdir()], ["demo1.py"])
 
-    def test_default_is_empty_interactive_software_and_does_not_auto_save(self):
-        process = self.invoke(data="1\n1\n0\n0\n")
+    def test_terminal_is_empty_interactive_software_and_does_not_auto_save(self):
+        process = self.invoke("--terminal", data="1\n1\n0\n0\n")
         self.assertSuccess(process)
         self.assertIn("1任务管理", process.stdout)
         self.assertIn("暂无任务", process.stdout)
         self.assertNotIn("合成案例演示", process.stdout)
         self.assertEqual([path.name for path in self.directory.iterdir()], ["demo1.py"])
+
+    def run_wrapper(self, source):
+        return subprocess.run([sys.executable, "-I", "-S", "-B", "-c", source, str(self.script)],
+                              capture_output=True, encoding="utf-8", cwd=self.directory, timeout=30)
+
+    def test_default_and_explicit_gui_open_real_tk_then_close_without_saving(self):
+        source = '''
+import json, runpy, sys, tkinter as tk
+from tkinter import ttk
+real_tk = tk.Tk
+opened = []
+languages = []
+def automatic_root(*args, **kwargs):
+    root = real_tk(*args, **kwargs)
+    opened.append(root)
+    def inspect_and_close():
+        try:
+            def widgets(parent):
+                for child in parent.winfo_children():
+                    yield child
+                    yield from widgets(child)
+            notebook = next(w for w in widgets(root) if isinstance(w, ttk.Notebook))
+            assert [notebook.tab(tab, "text") for tab in notebook.tabs()] == ["Tasks", "Time", "Plan"]
+            selector = next(w for w in widgets(root) if isinstance(w, ttk.Combobox) and tuple(w["values"]) == ("English", "简体中文"))
+            selector.set("简体中文")
+            selector.event_generate("<<ComboboxSelected>>")
+            root.update_idletasks()
+            assert [notebook.tab(tab, "text") for tab in notebook.tabs()] == ["任务", "时间", "计划"]
+            languages.append(True)
+        finally:
+            root.destroy()
+    root.after(150, inspect_and_close)
+    return root
+tk.Tk = automatic_root
+namespace = runpy.run_path(sys.argv[1], run_name="smoke_target")
+codes = [namespace["main"]([]), namespace["main"](["--gui"])]
+print(json.dumps({"codes": codes, "windows": len(opened), "languages": languages}))
+'''
+        process = self.run_wrapper(source)
+        self.assertSuccess(process)
+        self.assertEqual(json.loads(process.stdout), {"codes": [0, 0], "windows": 2, "languages": [True, True]})
+        self.assertEqual([path.name for path in self.directory.iterdir()], ["demo1.py"])
+
+    def test_cli_and_terminal_do_not_import_tkinter(self):
+        source = '''
+import builtins, io, runpy, sys
+original_import = builtins.__import__
+def without_tk(name, *args, **kwargs):
+    if name.split(".")[0] == "tkinter":
+        raise ModuleNotFoundError("Tk intentionally unavailable")
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = without_tk
+namespace = runpy.run_path(sys.argv[1], run_name="headless_target")
+assert namespace["main"](["--json"]) == 0
+sys.stdin = io.StringIO("0\\n")
+assert namespace["main"](["--terminal"]) == 0
+'''
+        process = self.run_wrapper(source)
+        self.assertSuccess(process)
+        self.assertIn('"timezone": "UTC"', process.stdout)
+        self.assertIn("1任务管理", process.stdout)
 
     def test_real_personal_workflow_save_restart_progress_and_completion(self):
         archive = self.directory / "personal.json"
@@ -75,7 +136,7 @@ class SingleFileTests(unittest.TestCase):
             "4", "7", "8",
             "1", "5", "2", "15", "0", "4", "8", "10", str(saved_as), "0",
         ]
-        process = self.invoke("--data", archive, data="\n".join(answers) + "\n")
+        process = self.invoke("--terminal", "--data", archive, data="\n".join(answers) + "\n")
         self.assertSuccess(process)
         self.assertNotIn("操作失败", process.stdout)
         document = json.loads(archive.read_text(encoding="utf-8"))
@@ -91,13 +152,13 @@ class SingleFileTests(unittest.TestCase):
         self.assertTrue(all(datetime.fromisoformat(b["start"]) >= datetime.fromisoformat(snapshot["now"]) for b in result["blocks"]))
         backup = json.loads(Path(str(archive) + ".bak").read_text(encoding="utf-8"))
         self.assertEqual(backup["request"]["tasks"][1]["remaining_minutes"], 30)
-        restarted = self.invoke("--data", archive, data="5\n0\n")
+        restarted = self.invoke("--terminal", "--data", archive, data="5\n0\n")
         self.assertSuccess(restarted)
         self.assertIn("用户修改后的阅读任务", restarted.stdout)
         self.assertIn("已锁定", restarted.stdout)
         # Completion/deletion are explicit user operations, never inferred
         # from having generated or saved a plan.
-        final = self.invoke("--data", archive, data="1\n6\n1\ny\n4\n2\ny\n0\n4\n8\n0\n")
+        final = self.invoke("--terminal", "--data", archive, data="1\n6\n1\ny\n4\n2\ny\n0\n4\n8\n0\n")
         self.assertSuccess(final)
         self.assertNotIn("操作失败", final.stdout)
         document = json.loads(archive.read_text(encoding="utf-8"))
@@ -109,12 +170,12 @@ class SingleFileTests(unittest.TestCase):
     def test_interactive_unsaved_eof_and_corrupt_archive_are_protected(self):
         archive = self.directory / "personal.json"
         answers = ["1", "2", "尚未保存的任务", "30", "30", "3", "2030-01-01 12:00", "2030-01-01 09:00", "y", "0"]
-        process = self.invoke("--data", archive, data="\n".join(answers) + "\n")
+        process = self.invoke("--terminal", "--data", archive, data="\n".join(answers) + "\n")
         self.assertEqual(process.returncode, 1)
         self.assertIn("更改尚未保存", process.stdout)
         self.assertFalse(archive.exists())
         archive.write_bytes(b"broken personal file")
-        process = self.invoke("--data", archive, data="0\n")
+        process = self.invoke("--terminal", "--data", archive, data="0\n")
         self.assertEqual(process.returncode, 1)
         self.assertIn("无法加载存档", process.stdout)
         self.assertEqual(archive.read_bytes(), b"broken personal file")
@@ -166,6 +227,9 @@ class SingleFileTests(unittest.TestCase):
     def test_invalid_options_and_input_emit_error_json(self):
         for args, data in ((("--example", "missing"), None),
                            (("--strategy", "missing"), None),
+                           (("--gui", "--terminal"), None),
+                           (("--gui", "--demo"), None),
+                           (("--terminal", "--json"), None),
                            (("schedule", "-"), '{"\\ud800":1}'),
                            (("schedule", "-"), '{"x":1,"x":2}')):
             with self.subTest(args=args, data=data):

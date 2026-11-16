@@ -8,16 +8,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MODULES = ROOT / "python_scheduler" / "src" / "academic_scheduler"
 ORDER = ("models", "availability", "strategies", "metrics", "engine", "validation",
-         "workspace", "storage", "terminal", "cli", "demo_cases", "demo", "application")
+         "workspace", "storage", "terminal", "cli", "demo_cases", "demo", "gui", "application")
 HEADER = '''#!/usr/bin/env python3
-"""Demo 1: interactive Python academic scheduling software (Python 3.11+).
+"""Demo 1: graphical Python academic scheduling software (Python 3.11+).
 
 Run: python demo1.py
+Text menu: python demo1.py --terminal
 Separate personal file: python demo1.py --data work/my-tasks.json
 Optional synthetic examples: python demo1.py --demo
 Machine-readable example results: python demo1.py --demo --json
 
 All source is in this file. Default UTC needs only the Python standard library.
+The graphical interface uses tkinter, included with standard Windows Python.
 Other IANA timezones need system timezone data or tzdata.
 The program writes personal data only when the user chooses to save.
 The default file is work/demo1-data/workspace.json under the current directory.
@@ -106,7 +108,20 @@ def build():
         flattened = transformer.visit(trees[name])
         ast.fix_missing_locations(flattened)
         sections.append(f"\n# ==================== {name}.py ====================\n\n")
-        sections.append(ast.unparse(flattened) + "\n")
+        if name == "gui":
+            # Keep Tk imports, GUI classes and helpers in a function closure.
+            # The standalone CLI can then run even when tkinter is unavailable.
+            loader = ast.FunctionDef(
+                name="_load_gui_runner",
+                args=ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
+                body=[*flattened.body, ast.Return(value=ast.Name(id="run_gui", ctx=ast.Load()))],
+                decorator_list=[],
+            )
+            ast.fix_missing_locations(loader)
+            sections.append(ast.unparse(loader) + "\n\n")
+            sections.append("def run_gui(*args, **kwargs):\n    return _load_gui_runner()(*args, **kwargs)\n")
+        else:
+            sections.append(ast.unparse(flattened) + "\n")
     sections.append('\nif __name__ == "__main__":\n    raise SystemExit(main())\n')
     result = "".join(sections)
     ast.parse(result, feature_version=(3, 11))
