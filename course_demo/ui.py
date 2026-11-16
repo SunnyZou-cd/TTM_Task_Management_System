@@ -19,7 +19,7 @@ WORDS = {
     "Remaining minutes": "剩余分钟", "Deadline": "截止时间", "Start": "开始时间",
     "Importance (1–5)": "重要性（1–5）", "Splittable": "允许拆分",
     "Advanced": "高级选项", "Cancel": "取消", "End": "结束时间",
-    "Busy time": "忙碌时间", "Task": "任务", "Strategy": "策略",
+    "Busy time": "忙碌时间", "Task": "任务", "Strategy": "策略", "Due": "截止日期",
     "Minimum block": "最短任务块", "Maximum block": "最长任务块",
     "Planning days": "规划天数", "Apply": "应用", "Error": "错误",
     "English": "English", "中文": "中文", "No task selected": "请先选择任务",
@@ -454,7 +454,8 @@ class PlannerApp:
         for index, (strategy, result) in enumerate(results):
             metrics = result["metrics"]
             ratio = "—" if metrics["weighted_ratio"] is None else f'{metrics["weighted_ratio"]:.2f}'
-            text = f'{strategy}: {self.t("Scheduled")} {metrics["scheduled"]}; {self.t("Unscheduled")} {metrics["unscheduled"]}; weighted {ratio}'
+            label = self.t("Due") if strategy == "edf" else strategy
+            text = f'{label}: {self.t("Scheduled")} {metrics["scheduled"]}; {self.t("Unscheduled")} {metrics["unscheduled"]}; weighted {ratio}'
             ttk.Label(frame, text=text).grid(row=index, column=0, sticky="w", pady=8)
             def apply(chosen=result, name=strategy):
                 self.apply_plan(chosen, name)
@@ -465,8 +466,9 @@ class PlannerApp:
     def settings(self):
         window, frame = self.dialog("Settings")
         ttk.Label(frame, text=self.t("Strategy")).grid(row=0, column=0)
-        strategy = ttk.Combobox(frame, values=["edf", "importance", "risk"], state="readonly", width=26)
-        strategy.set(self.data["settings"]["strategy"])
+        strategy = ttk.Combobox(frame, values=[self.t("Due"), "importance", "risk"], state="readonly", width=26)
+        current = self.data["settings"]["strategy"]
+        strategy.set(self.t("Due") if current == "edf" else current)
         strategy.grid(row=0, column=1)
         minimum = self.field(frame, "Minimum block", self.data["settings"]["min_block"])
         maximum = self.field(frame, "Maximum block", self.data["settings"]["max_block"])
@@ -475,7 +477,8 @@ class PlannerApp:
         def submit():
             try:
                 candidate = copy.deepcopy(self.data)
-                candidate["settings"] = {"strategy": strategy.get(), "min_block": int(minimum.get()),
+                selected = "edf" if strategy.get() == self.t("Due") else strategy.get()
+                candidate["settings"] = {"strategy": selected, "min_block": int(minimum.get()),
                                          "max_block": int(maximum.get()), "days": int(days.get())}
                 if candidate["settings"] == self.data["settings"]:
                     window.destroy()

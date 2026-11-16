@@ -22,7 +22,7 @@ python .\demo1.py
 
    成功标志：忙碌时段显示为灰块；不会因为翻页改变任务。
 
-3. **Generate**：在未来若干天的日历空白排程。Settings选择edf/importance/risk、最小/最大块和规划天数。Compare可比较三策略，再Apply某个结果。
+3. **Generate**：在未来若干天的日历空白排程。Settings选择Due（截止日期）/importance/risk、最小/最大块和规划天数。Compare可比较三策略，再Apply某个结果。Due内部仍使用edf标识，兼容已有存档。
 
    成功标志：日历出现安排，状态区显示已排、未排和原因；不会把计划算作学习完成。空白包含夜间，请将不希望排程的时间标为忙碌。
 
